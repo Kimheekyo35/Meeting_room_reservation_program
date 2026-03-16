@@ -94,6 +94,154 @@ def create_calendar_event(service, calendar_id: str, room_name: str, title: str,
     return service.events().insert(calendarId=calendar_id, body=event_body).execute()
 
 
+def parse_google_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    if "T" not in value:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=SEOUL_TZ)
+    return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(SEOUL_TZ)
+
+
+def format_event_window(start_raw: str | None, end_raw: str | None) -> str:
+    start_dt = parse_google_datetime(start_raw)
+    end_dt = parse_google_datetime(end_raw)
+    if not start_dt or not end_dt:
+        return "시간 정보 없음"
+    return f"{start_dt.strftime('%Y-%m-%d %H:%M')} ~ {end_dt.strftime('%H:%M')}"
+
+
+def list_user_reservations(service, slack_user_id: str) -> list[dict]:
+    now_iso = datetime.now(SEOUL_TZ).isoformat()
+    calendar_to_room = {}
+    for room_name, calendar_id in ROOM_OPTIONS:
+        if calendar_id not in calendar_to_room:
+            calendar_to_room[calendar_id] = room_name
+
+    reservations = []
+    for calendar_id, fallback_room_name in calendar_to_room.items():
+        result = service.events().list(
+            calendarId=calendar_id,
+            timeMin=now_iso,
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=50,
+            privateExtendedProperty=[
+                f"slack_user_id={slack_user_id}",
+                "created_by=Meeting_reserv",
+            ],
+        ).execute()
+
+        for event in result.get("items", []):
+            ext = event.get("extendedProperties", {}).get("private", {})
+            room_name = ext.get("room_name", fallback_room_name)
+            start_raw = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date")
+            start_dt = parse_google_datetime(start_raw)
+            reservations.append(
+                {
+                    "calendar_id": calendar_id,
+                    "event_id": event.get("id"),
+                    "summary": event.get("summary", "(No title)"),
+                    "room_name": room_name,
+                    "start_dt": start_dt,
+                    "start_raw": start_raw,
+                    "end_raw": event.get("end", {}).get("dateTime") or event.get("end", {}).get("date"),
+                }
+            )
+
+    reservations.sort(key=lambda x: x["start_dt"] or datetime.max.replace(tzinfo=SEOUL_TZ))
+    return reservations
+
+
+def build_home_view(slack_user_id: str, reservations: list[dict], notice: str | None = None):
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*내 회의실 예약 목록*",
+            },
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "refresh_home",
+                    "text": {"type": "plain_text", "text": "새로고침"},
+                }
+            ],
+        },
+    ]
+
+    if notice:
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": notice},
+                },
+            ]
+        )
+
+    if not reservations:
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "예정된 예약이 없습니다."},
+                },
+            ]
+        )
+    else:
+        for reservation in reservations[:20]:
+            blocks.extend(
+                [
+                    {"type": "divider"},
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": (
+                                f"*{reservation['summary']}*\n"
+                                f"회의실: {reservation['room_name']}\n"
+                                f"시간: {format_event_window(reservation['start_raw'], reservation['end_raw'])}"
+                            ),
+                        },
+                        "accessory": {
+                            "type": "button",
+                            "action_id": "cancel_reservation",
+                            "text": {"type": "plain_text", "text": "취소"},
+                            "style": "danger",
+                            "value": json.dumps(
+                                {
+                                    "calendar_id": reservation["calendar_id"],
+                                    "event_id": reservation["event_id"],
+                                }
+                            ),
+                        },
+                    },
+                ]
+            )
+
+    return {
+        "type": "home",
+        "callback_id": "reservation_home",
+        "private_metadata": json.dumps({"user_id": slack_user_id}),
+        "blocks": blocks,
+    }
+
+
+def publish_home(client, slack_user_id: str, notice: str | None = None):
+    service = get_calendar_service()
+    reservations = list_user_reservations(service, slack_user_id)
+    client.views_publish(
+        user_id=slack_user_id,
+        view=build_home_view(slack_user_id, reservations, notice=notice),
+    )
+
+
 def build_step1_modal():
     return {
         "type": "modal",
@@ -240,10 +388,47 @@ def open_modal(ack, body, client):
     )
 
 
+@app.event("app_home_opened")
+def handle_app_home_opened(event, client, logger):
+    try:
+        publish_home(client, event["user"])
+    except Exception as e:
+        logger.exception(e)
+
+
+@app.action("refresh_home")
+def handle_refresh_home(ack, body, client):
+    ack()
+    publish_home(client, body["user"]["id"])
+
+
+@app.action("cancel_reservation")
+def handle_cancel_reservation(ack, body, client):
+    ack()
+
+    payload = json.loads(body["actions"][0]["value"])
+    calendar_id = payload["calendar_id"]
+    event_id = payload["event_id"]
+    slack_user_id = body["user"]["id"]
+
+    service = get_calendar_service()
+    event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+    private_props = event.get("extendedProperties", {}).get("private", {})
+    owner_slack_user_id = private_props.get("slack_user_id")
+    created_by = private_props.get("created_by")
+
+    if owner_slack_user_id != slack_user_id or created_by != "Meeting_reserv":
+        publish_home(client, slack_user_id, notice=":warning: 본인이 예약한 일정만 취소할 수 있습니다.")
+        return
+
+    service.events().delete(calendarId=calendar_id, eventId=event_id).execute()
+    publish_home(client, slack_user_id, notice=":white_check_mark: 예약이 취소되었습니다.")
+
+
 @app.view("reservation_step1")
 def handle_step1(ack, body, view):
-    values = view["state"]["values"]
 
+    values = view["state"]["values"]
     title = values["title_block"]["title_action"]["value"].strip()
     username = values["username_block"]["name_action"]["value"].strip()
     date_str = values["date_block"]["date_action"]["selected_date"]
