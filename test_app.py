@@ -37,7 +37,7 @@ app = App(
     token_verification_enabled=not SKIP_SLACK_AUTH_TEST,
 )
 
-
+URL = "https://www.naver.com/"
 TIME_SLOTS = [
     "09:00", "09:30",
     "10:00", "10:30",
@@ -408,7 +408,7 @@ def start_modal():
                             "type": "plain_text",
                             "text": "조회"
                         },
-                        "url": "https://www.naver.com/"
+                        "url": URL
                     }
                 ]
             }
@@ -477,25 +477,25 @@ def build_step1_modal(
                 "options": floor_options,
                 "initial_option": floor_option,
                 },
+        },
+        {
+            "type": "actions",
+            "block_id": "lookup_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "open_web_lookup",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "조회"
+                    },
+                    "url": URL
+                }
+            ]
         }
-        ]
-    }
+    ]
+}
     
-@app.view("reservation_step1")
-def handle_step1(ack, body, view):
-    values = view["state"]["values"]
-
-    company_id = values["company_block"]["company_action"]["selected_option"]["value"]
-    floor_id = values["floor_block"]["floor_action"]["selected_option"]["value"]
-
-    ack({
-        "response_action": "push",
-        "view": build_step2_modal(
-            company_id=company_id,
-            floor_id=floor_id,
-        )
-    })
-
 
 # 두 번째 모달이 보이는 방법
 def build_step2_modal(
@@ -650,26 +650,219 @@ def build_step2_modal(
         "blocks": blocks,
     }
 
+# 마지막 예약 확인
+def build_success_modal(company_id, floor_name, room_name, booking_date, start_time, end_time):
+    return {
+        "type": "modal",
+        "callback_id": "reservation_success",
+        "title": {
+            "type": "plain_text",
+            "text": "예약 완료"
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "닫기"
+        },
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f":white_check_mark: *회의실 예약이 완료되었습니다.*\n\n"
+                        f"• 회사: {company_id}\n"
+                        f"• 층: {floor_name}\n"
+                        f"• 회의실: {room_name}\n"
+                        f"• 날짜: {booking_date}\n"
+                        f"• 시간: {start_time} ~ {end_time}"
+                    )
+                }
+            },
+            {
+                "type": "actions",
+                "block_id": "success_actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "action_id": "open_web_lookup",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "조회"
+                        },
+                        "url": URL
+                    }
+                ]
+            }
+        ]
+    }
+@app.view("reservation_start")
+def handle_reservation_start(ack, body, view):
+    ack({
+        "response_action": "push",
+        "view": build_step1_modal()
+    })
+
+
+@app.view("reservation_step1")
+def handle_step1(ack, body, view):
+    values = view["state"]["values"]
+
+    company_id = values["company_block"]["company_action"]["selected_option"]["value"]
+    floor_id = values["floor_block"]["floor_action"]["selected_option"]["value"]
+
+    ack({
+        "response_action": "push",
+        "view": build_step2_modal(
+            company_id=company_id,
+            floor_id=floor_id,
+        )
+    })
+
+@app.action("open_web_lookup")
+def handle_lookup_button(ack, body):
+    ack()
+
+# 해당 버튼들이 변화됐을 때
+@app.action("company_action")
+@app.action("floor_action")
+@app.action("room_action")
+@app.action("date_action")
+@app.action("start_time_action")
+@app.action("end_time_action")
+def handle_modal_actions(ack, body, client):
+    ack()
+
+    company_id, room_id, floor_id, booking_date, start_time, end_time = parse_current_context_from_body(body)
+    callback_id = body["view"]["callback_id"]
+
+    if callback_id == "reservation_step1":
+        client.views_update(
+            view_id=body["view"]["id"],
+            hash=body["view"]["hash"],
+            view=build_step1_modal(
+                company_id=company_id,
+                floor_id=floor_id,
+            )
+        )
+        return
+    
+    if callback_id == "reservation_step2":
+        client.view_update(
+            view_id = body["view"]["id"],
+            hash = body["view"]["hash"],
+            view = build_step2_modal(
+                company_id=company_id,
+                floor_id=floor_id,
+                room_id=room_id,
+                booking_date=booking_date,
+                start_time=start_time,
+                end_time=end_time
+            )
+        )
+        return
+    
+
+# reservation_step2 불러오기
+
 @app.view("reservation_step2")
 def handle_step2(ack, body, view, client):
     values = view["state"]["values"]
     metadata = json.loads(view.get("private_metadata", "{}"))
 
-    room_id = values["room_block"]["room_action"]["selected_option"]["value"]
+    room_selected = values["room_block"]["room_action"].get("selected_option")
+    start_selected = values["start_time_block"]["start_time_action"].get("selected_option")
+    end_selected = values["end_time_block"]["end_time_action"].get("selected_option")
+
+    room_id = room_selected["value"] if room_selected else None
+    start_time = start_selected["value"] if start_selected else None
+    end_time = end_selected["value"] if end_selected else None
+    booking_date = values["date_block"]["date_action"].get("selected_date")
     attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users", [])
-    booking_date = values["date_block"]["date_action"]["selected_date"]
-    start_time = values["start_time_block"]["start_time_action"]["selected_option"]["value"]
-    end_time = values["end_time_block"]["end_time_action"]["selected_option"]["value"]
 
     company_id = metadata["company_id"]
     floor_id = metadata["floor_id"]
-    room_name = metadata.get("room_name", "")
-    floor_name = metadata.get("floor_name", "")
+    floor_options = COMPANIES_FLOOR.get(company_id, [])
+    floor_option = find_option(floor_options, floor_id) if floor_id else None
+    floor_name = floor_option["text"]["text"] if floor_option else "-"
 
-    # 여기서 예약 로직 실행
-    # create_calendar_event(...)
+    room_options = ROOMS_BY_COMPANY.get(company_id, [])
+    room_option = find_option(room_options, room_id) if room_id else None
+    room_name = room_option["text"]["text"] if room_option else "-"
 
-    ack()
+    if not room_id:
+        ack({
+            "response_action": "errors",
+            "errors": {"room_block": "회의실을 선택하세요."}
+        })
+        return
+
+    if not start_time or start_time == "__none__":
+        ack({
+            "response_action": "errors",
+            "errors": {"start_time_block": "선택 가능한 시작 시간이 없습니다."}
+        })
+        return
+
+    if not end_time or end_time == "__none__":
+        ack({
+            "response_action": "errors",
+            "errors": {"end_time_block": "종료 시간을 선택하세요."}
+        })
+        return
+
+    start_dt = datetime.strptime(start_time, "%H:%M")
+    end_dt = datetime.strptime(end_time, "%H:%M")
+
+    if end_dt <= start_dt:
+        ack({
+            "response_action": "errors",
+            "errors": {"end_time_block": "종료 시간은 시작 시간보다 뒤여야 합니다."}
+        })
+        return
+
+    try:
+        save_booking(
+            COMPANY_ID=company_id,
+            RESERVE_DAY=booking_date,
+            FLOOR=floor_id,
+            ROOM_ID=room_id,
+            USER_ID=body["user"]["id"],
+            USER_NICKNAME=body["user"].get("username", ""),
+            CREATED_AT=datetime.now(SEOUL_TZ),
+            start_time=start_time,
+            end_time=end_time,
+        )
+    except ValueError:
+        ack({
+            "response_action": "update",
+            "view": build_step2_modal(
+                company_id=company_id,
+                floor_id=floor_id,
+                room_id=room_id,
+                booking_date=booking_date,
+                start_time=None,
+                end_time=None,
+                error_text="해당 시간에 이미 예약된 회의실입니다. 다른 시간을 골라주세요."
+            )
+        })
+        return
+
+    ack({
+        "response_action": "update",
+        "view": build_success_modal(
+            company_id=company_id,
+            floor_name=floor_name,
+            room_name=room_name,
+            booking_date=booking_date,
+            start_time=start_time,
+            end_time=end_time,
+        )
+    })
+
+    client.chat_postMessage(
+        channel=body["user"]["id"],
+        text=f"회의실 예약 확인: {booking_date} / {room_name} / {start_time}~{end_time}"
+    )
 
 def build_step3_modal(metadata:dict):
 
