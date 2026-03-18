@@ -342,10 +342,10 @@ def parse_current_context_from_body(body):
     state_values = view.get("state", {}).get("values",{})
     meta = json.loads(view.get("private_metadata") or "{}")
 
-    company_id = state_select_value(state_values, "company_block","company_action")
-    room_id = state_select_value(state_values, "room_block", "room_action")
-    floor_id = state_select_value(state_values,"floor_block","floor_action")
-    booking_date = state_date_value(state_values, "date_block","date_action")
+    company_id = state_select_value(state_values, "company_block", "company_action") or meta.get("company_id")
+    room_id = state_select_value(state_values, "room_block", "room_action") or meta.get("room_id")
+    floor_id = state_select_value(state_values, "floor_block", "floor_action") or meta.get("floor_id")
+    booking_date = state_date_value(state_values, "date_block", "date_action") or meta.get("booking_date")
     start_time = meta.get("start_time")
     end_time = meta.get("end_time")
 
@@ -355,6 +355,7 @@ def parse_current_context_from_body(body):
 
     if action_id == "company_action":
         company_id = action["selected_option"]["value"]
+        floor_id = None
         room_id = None
         start_time = None
         end_time = None
@@ -379,7 +380,7 @@ def parse_current_context_from_body(body):
 
     return company_id, room_id, floor_id, booking_date, start_time, end_time
 
-# 조회 / 예약 버튼
+# 예약 버튼
 def start_modal():
     return {
         "type": "actions",
@@ -395,24 +396,7 @@ def start_modal():
         "submit": {
             "type": "plain_text",
             "text": "예약"
-        },
-        "blocks": [
-            {
-                "type": "actions",
-                "block_id": "lookup_actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "action_id": "open_web_lookup",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "조회"
-                        },
-                        "url": URL
-                    }
-                ]
-            }
-        ]
+        }
     }
 
 # 슬랙 모달의 흐름 점검
@@ -448,7 +432,7 @@ def build_step1_modal(
             "floor_id": floor_id,
             "floor_name": floor_name,
         }),
-        "title": {"type": "plain_text", "text": "회의실 예약/조회"},
+        "title": {"type": "plain_text", "text": "회의실 예약"},
         "submit": {"type": "plain_text", "text": "다음"},
         "close": {"type": "plain_text", "text": "닫기"},
         "blocks" : [
@@ -637,7 +621,7 @@ def build_step2_modal(
         }),
         "title": {
             "type": "plain_text",
-            "text": "회의실 예약 / 조회"
+            "text": "회의실 예약"
         },
         "submit": {
             "type": "plain_text",
@@ -718,10 +702,6 @@ def handle_step1(ack, body, view):
         )
     })
 
-@app.action("open_web_lookup")
-def handle_lookup_button(ack, body):
-    ack()
-
 # 해당 버튼들이 변화됐을 때
 @app.action("company_action")
 @app.action("floor_action")
@@ -747,7 +727,7 @@ def handle_modal_actions(ack, body, client):
         return
     
     if callback_id == "reservation_step2":
-        client.view_update(
+        client.views_update(
             view_id = body["view"]["id"],
             hash = body["view"]["hash"],
             view = build_step2_modal(
@@ -763,7 +743,6 @@ def handle_modal_actions(ack, body, client):
     
 
 # reservation_step2 불러오기
-
 @app.view("reservation_step2")
 def handle_step2(ack, body, view, client):
     values = view["state"]["values"]
@@ -876,7 +855,7 @@ def build_step3_modal(metadata:dict):
     
     return {
         "type": "section",
-        "title": "회의실 예약 / 조회",
+        "title": "회의실 예약",
         "close": "닫기",
         "text": {
             "type": "mrkdwn",
@@ -908,35 +887,288 @@ def build_step3_modal(metadata:dict):
             }
     }
 
-    if not start_options:
-        blocks.append({
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": "시작 시간을 입력하세요."}],
+# 사용자 검색 기준 뒤에 있는 회의실 조회 (취소용) / 예약 버튼 눌렀을 때
+def get_user_future_booking(user_id:str) -> list[dict]:
+    connection = None
+    
+    try:
+        now = datetime.now(SEOUL_TZ)
+        today = now.strftime("%Y-%m-%d")
+        now_time = now.strftime("%H:%M")
+
+        connection = psycopg2.connect(
+            host = DB_HOST,
+            port = DB_PORT,
+            database = DB_DATABASE,
+            user = DB_USER,
+            password = DB_PASSWORD
+        )
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                 SELECT
+                    COMPANY_ID,
+                    RESERVE_DAY,
+                    FLOOR,
+                    ROOM_ID,
+                    USER_ID,
+                    USER_NICKNAME,
+                    CREATED_AT,
+                    MIN(RESERVE_TIME) AS START_TIME,
+                    MAX(RESERVE_TIME) AS LAST_SLOT
+                FROM meeting_room_booking.ROOM_BOOKING
+                WHERE USER_ID = %s
+                  AND (
+                        RESERVE_DAY > %s
+                        OR (RESERVE_DAY = %s AND RESERVE_TIME >= %s)
+                  )
+                GROUP BY
+                    COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID,
+                    USER_ID, USER_NICKNAME, CREATED_AT
+                ORDER BY RESERVE_DAY, START_TIME
+            """, (user_id, today, today, now_time))
+
+            rows = cursor.fetchall()
+
+        results = []
+        for row in rows:
+            company_id, reserve_day, floor, room_id, user_id, user_nickname, created_at, start_time, last_slot = row
+            
+            # 마지막 슬롯 + 30분 = 종료시간
+            last_dt = datetime.strptime(str(last_slot)[:5], "%H:%M")
+            end_dt = last_dt + timedelta(minutes=30)
+
+            results.append({
+                "company_id": company_id,
+                "reserve_day": reserve_day,
+                "floor": floor,
+                "room_id": room_id,
+                "user_id": user_id,
+                "user_nickname": user_nickname,
+                "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
+                "start_time": str(start_time)[:5],
+                "end_time": end_dt.strftime("%H:%M"),
+            })
+        
+        return results
+    
+    finally:
+        if connection:
+            connection.close()
+
+# DB 삭제용
+def delete_booking_by_created_at(
+        user_id: str,
+        company_id: str,
+        reserve_day: str,
+        floor: str,
+        room_id: str,
+        created_at: str
+):
+    connection = None
+    try:
+        connection = psycopg2.connect(
+            host = DB_HOST,
+            port = DB_PORT,
+            database = DB_DATABASE,
+            user = DB_USER,
+            password = DB_PASSWORD
+        )
+
+        connection.autocommit = False
+
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                DELETE FROM meeting_room_booking.ROOM_BOOKING
+                WHERE USER_ID = %s
+                  AND COMPANY_ID = %s
+                  AND RESERVE_DAY = %s
+                  AND FLOOR = %s
+                  AND ROOM_ID = %s
+                  AND CREATED_AT = %s
+            """, (user_id, company_id, reserve_day, floor, room_id, created_at))
+
+            deleted_count = cursor.rowcount
+
+        connection.commit()
+        return deleted_count
+    
+    except Exception:
+        if connection:
+            connection.rollback()
+        raise
+
+    finally:
+        if connection:
+            connection.close()
+
+# 조회 및 취소 버튼
+def build_entry_modal():
+    return {
+        "type": "modal",
+        "callback_id": "entry_modal",
+        "title": {
+            "type": "plain_text",
+            "text": "회의실 메뉴"
+        },
+        "close": {
+            "type": "plain_text",
+            "text": "닫기"
+        },
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "원하는 작업을 선택하세요."
+                }
+            },
+            {
+                "type": "actions",
+                "block_id": "entry_actions",
+                "elements": [
+                    {
+                        "type": "actions",
+                        "block_id": "lookup_actions",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "action_id": "open_web_lookup",
+                                "text": {
+                                    "type": "plain_text",
+                                    "text": "조회"
+                                },
+                                "url": URL
+                            }
+                        ]
+                    },
+                    {
+                        "type": "button",
+                        "action_id": "go_lookup_cancel",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "조회/취소"
+                        },
+                        "value": "lookup_cancel"
+                    }
+                ]
+            }
+        ]
+    }
+# 예약 목록 모달 만드는 함수
+def build_booking_cancel_list(bookings: list[dict]):
+    blocks = []
+
+    if not bookings:
+        blocks.appned({
+            "type":"section",
+            "text":{"type":"mrkdwn","text":"조회된 예약이 없습니다."}
         })
-    elif start_time and not end_options:
-        blocks.append({
-            "type": "context",
-            "elements": [{"type": "mrkdwn", "text": "종료 시간을 입력하세요."}],
-        })
+    
+    else:
+        # 예약된 스케줄 옆에 '취소' 버튼
+        for booking in bookings:
+            payload = {
+                "company_id":booking["company_id"],
+                "reserve_day": booking["reserve_day"],
+                "floor": booking["floor"],
+                "room_id": booking["room_id"],
+                "created_at": booking["created_at"],
+                "user_id": booking["user_id"],
+            }
+
+            blocks.extend([
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{booking['room_name']}*\n"
+                            f"{booking['reserve_day']} / {booking['start_time']}~{booking['end_time']}"
+                        )
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "action_id": "cancel_booking",
+                        "text": {"type": "plain_text", "text": "취소"},
+                        "style": "danger",
+                        "value": json.dumps(payload),
+                        "confirm": {
+                            "title": {"type": "plain_text", "text": "예약 취소"},
+                            "text": {"type": "plain_text", "text": "이 예약을 취소할까요?"},
+                            "confirm": {"type": "plain_text", "text": "취소하기"},
+                            "deny": {"type": "plain_text", "text": "닫기"},
+                            "style": "danger"
+                        }
+                    }
+                },
+                {"type": "divider"}
+            ])
 
     return {
         "type": "modal",
-        "callback_id": "room_booking_submit",
-        "private_metadata": meta,
-        "title": {"type": "plain_text", "text": "회의실 예약"},
-        "submit": {"type": "plain_text", "text": "예약 저장"},
+        "callback_id": "booking_cancel_list",
+        "title": {"type": "plain_text", "text": "예약 조회/취소"},
         "close": {"type": "plain_text", "text": "닫기"},
         "blocks": blocks,
     }
 
-    
+
+@app.command("/회의실조회및취소")
+def look_and_cancel_modal(ack, body, client):
+    ack()
+    client.views_open(
+        trigger_id = body["trigger_id"],
+        view = build_entry_modal()
+    )   
+
+# 취소 버튼 확인
+@app.action("go_lookup_cancel")
+# 해당 버튼이 눌러지면 아래 함수가 실행됨.
+def click_cancel(ack, body, client):
+    ack()
+
+    client.views_open(
+        trigger_id = body["trigger_id"],
+        view = build_booking_cancel_list()
+    )
+
+# view 는 slack의 submit 버튼에 해당하면 쓰는 것
+# elements, button은 action이 맞음
+
+# 스케줄 옆 취소 버튼 눌렀을 때
+@app.action("cancel_booking")
+def handle_cancel_booking(ack, body, client):
+    ack()
+
+    payload = json.loads(body["actions"][0]["value"])
+
+    delete_booking_by_created_at(
+        user_id=payload["user_id"],
+        company_id=payload["company_id"],
+        reserve_day=payload["reserve_day"],
+        floor=payload["floor"],
+        room_id=payload["room_id"],
+        created_at=payload["created_at"],
+    )
+
+    refreshed = get_user_future_booking(payload["user_id"])
+
+    client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        view=build_booking_cancel_list(get_user_future_booking(refreshed))
+    )
+
+# ----------------------------------------------------------------------------------------
+
 
 @app.command("/회의실예약")
 def open_booking_modal(ack, body, client):
     ack()
     client.views_open(
         trigger_id=body["trigger_id"],
-        view=start_modal()
+        view=build_step1_modal()
     )
 
 
