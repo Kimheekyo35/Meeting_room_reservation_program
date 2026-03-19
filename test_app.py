@@ -7,11 +7,6 @@ import psycopg2
 from psycopg2 import Error, sql
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
-
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -37,7 +32,7 @@ app = App(
     token_verification_enabled=not SKIP_SLACK_AUTH_TEST,
 )
 
-URL = "https://www.naver.com/"
+URL = "https://www.wemarketing.co.kr/room-reservation/"
 TIME_SLOTS = [
     "09:00", "09:30",
     "10:00", "10:30",
