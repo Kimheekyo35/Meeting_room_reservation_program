@@ -446,10 +446,39 @@ def build_step1_modal(
             "floor_id": floor_id,
             "floor_name": floor_name,
         }),
-        "title": {"type": "plain_text", "text": "회의실 예약"},
+        "title": {"type": "plain_text", "text": "회의실"},
         "close": {"type": "plain_text", "text": "닫기"},
         "submit": {"type": "plain_text", "text": "다음"},
         "blocks" : [
+        {
+            "type": "actions",
+            "block_id": "lookup_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "open_web_lookup",
+                    "text": {
+                        "type": "plain_text",
+                        "text": ":blush: 조회"
+                    },
+                    "url": URL
+                },
+                {
+                    "type": "button",
+                    "action_id": "go_lookup_cancel",
+                    "text": {
+                        "type": "plain_text",
+                        "text": ":warning: 예약 취소"
+                    },
+                    "value": "lookup_cancel"
+                },
+
+            ]
+        },
+        {
+            "type":"divider"
+        },
+        
         {
             "type": "input",
             "block_id": "company_block",
@@ -476,21 +505,6 @@ def build_step1_modal(
                 "initial_option": floor_option,
                 },
         },
-        {
-            "type": "actions",
-            "block_id": "lookup_actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "action_id": "open_web_lookup",
-                    "text": {
-                        "type": "plain_text",
-                        "text": "조회"
-                    },
-                    "url": URL
-                }
-            ]
-        }
     ]
 }
     
@@ -574,19 +588,19 @@ def build_step2_modal(
             "label": {"type": "plain_text", "text": "회의실"},
             "element": room_element,
         },
-        {
-            "type": "input",
-            "block_id": "attendee_block",
-            "label": {"type": "plain_text", "text": "참석자"},
-            "element": {
-                "type": "multi_users_select",
-                "action_id": "attendee_action",
-                "placeholder": {
-                    "type": "plain_text",
-                    "text": "사람을 선택하세요"
-                }
-            }
-        },
+        # {
+        #     "type": "input",
+        #     "block_id": "attendee_block",
+        #     "label": {"type": "plain_text", "text": "참석자"},
+        #     "element": {
+        #         "type": "multi_users_select",
+        #         "action_id": "attendee_action",
+        #         "placeholder": {
+        #             "type": "plain_text",
+        #             "text": "사람을 선택하세요"
+        #         }
+        #     }
+        # },
         {
             "type": "input",
             "block_id": "date_block",
@@ -671,9 +685,8 @@ def build_success_modal(company_id, floor_name, room_name, booking_date, start_t
                     "type": "mrkdwn",
                     "text": (
                         f":white_check_mark: *회의실 예약이 완료되었습니다.*\n\n"
-                        f"• 회사: {company_id}\n"
-                        f"• 층: {floor_name}\n"
-                        f"• 회의실: {room_name}\n"
+                        f" {company_id} {floor_name}\n"
+                        f"• 장소: {room_name}\n"
                         f"• 날짜: {booking_date}\n"
                         f"• 시간: {start_time} ~ {end_time}"
                     )
@@ -683,19 +696,32 @@ def build_success_modal(company_id, floor_name, room_name, booking_date, start_t
                 "type": "actions",
                 "block_id": "success_actions",
                 "elements": [
-                    {
-                        "type": "button",
-                        "action_id": "open_web_lookup",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "조회"
-                        },
-                        "url": URL
-                    }
+                {
+                    "type": "button",
+                    "action_id": "open_web_lookup",
+                    "text": {
+                        "type": "plain_text",
+                        "text": ":blush: 조회"
+                    },
+                    "url": URL
+                },
+                {
+                    "type": "button",
+                    "action_id": "go_lookup_cancel",
+                    "text": {
+                        "type": "plain_text",
+                        "text": ":warning: 예약 취소"
+                    },
+                    "value": "lookup_cancel"
+                },
+
+                    
                 ]
             }
         ]
     }
+
+
 @app.view("reservation_start")
 def handle_reservation_start(ack, body, view):
     ack({
@@ -775,7 +801,6 @@ def handle_step2(ack, body, view, client):
     start_time = start_selected["value"] if start_selected else None
     end_time = end_selected["value"] if end_selected else None
     booking_date = values["date_block"]["date_action"].get("selected_date")
-    attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users", [])
 
     company_id = metadata["company_id"]
     floor_id = metadata["floor_id"]
@@ -1133,32 +1158,23 @@ def build_booking_cancel_list(bookings=None):
     return {
         "type": "modal",
         "callback_id": "booking_cancel_list",
-        "title": {"type": "plain_text", "text": "예약 조회/취소"},
+        "title": {"type": "plain_text", "text": "회의실 예약 취소"},
         "close": {"type": "plain_text", "text": "닫기"},
         "blocks": blocks,
     }
 
-#views.open은 말 그대로 모달을 “처음 열 때” 쓰는 메서드고, views.push는 이미 열린 모달 스택에 새 뷰를 올리는 용도
-
-@app.command("/회의실조회및취소")
-def look_and_cancel_modal(ack, body, client):
-    ack()
-    client.views_open(
-        trigger_id = body["trigger_id"],
-        view = build_entry_modal()
-    )   
 
 # 취소 버튼 확인
 @app.action("go_lookup_cancel")
 # 해당 버튼이 눌러지면 아래 함수가 실행됨.
 def click_cancel(ack, body, client):
     ack()
-
+    user_name = body["user"]["id"]
     client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
         # view는 json 형태를 받아야 함.
-        view=build_booking_cancel_list(get_user_future_booking(body["user"]["id"]))
+        view=build_booking_cancel_list(get_user_future_booking(user_name))
     )
 
 # view 는 slack의 submit 버튼에 해당하면 쓰는 것
@@ -1191,7 +1207,7 @@ def handle_cancel_booking(ack, body, client):
 # ----------------------------------------------------------------------------------------
 
 
-@app.command("/회의실예약")
+@app.command("/회의실")
 def open_booking_modal(ack, body, client):
     ack()
     client.views_open(
