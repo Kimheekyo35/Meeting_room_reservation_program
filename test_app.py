@@ -64,32 +64,32 @@ SLOT_OPTIONS = [
 ]
 
 COMPANIES = [
-    {"text":{"type":"plain_text", "text":"비나우"},"value":"BENOW"},
-    {"text":{"type":"plain_text","text":"위마케팅"},"value":"Wemarketing"},
+    {"text":{"type":"plain_text", "text":"GT타워"},"value":"GT타워"},
+    {"text":{"type":"plain_text","text":"메리츠타워"},"value":"메리츠타워"},
 ]
 
 
 COMPANIES_FLOOR ={
-    "BENOW":[
-    {"text": {"type":"plain_text", "text":"4층"}, "value":"4F"},
-    {"text": {"type":"plain_text", "text":"7층"}, "value":"7F"},
-    {"text": {"type":"plain_text", "text":"14층"}, "value":"14F"}
+    "GT타워":[
+        {"text": {"type":"plain_text", "text":"4층"}, "value":"4F"},
+        {"text": {"type":"plain_text", "text":"7층"}, "value":"7F"},
+        {"text": {"type":"plain_text", "text":"14층"}, "value":"14F"}
     ],
-    "Wemarketing":[
+    "메리츠타워":[
     {"text": {"type":"plain_text", "text":"17층"}, "value":"17F"}
     ]
 }
 
 
 ROOMS_BY_COMPANY = {
-    "Wemarketing":[
+    "메리츠타워":[
         {"text": {"type": "plain_text", "text": "1회의실 [16인]"}, "value": "we_room_1"},
         {"text":{"type":"plain_text","text":"3회의실 [6인]"}, "value":"we_room_3"},
         {"text":{"type":"plain_text","text":"4회의실 [6인]"}, "value":"we_room_4"},
         {"text":{"type":"plain_text","text":"5회의실 [6인/모니터 X]"}, "value":"we_room_5"},
         {"text":{"type":"plain_text","text":"6회의실 [6인/화상회의]"}, "value":"we_room_6"},
     ],
-    "BENOW": [
+    "GT타워": [
         {"text": {"type": "plain_text", "text": "A회의실"}, "value": "be_room_a"},
         {"text": {"type": "plain_text", "text": "B회의실"}, "value": "be_room_b"},
     ]
@@ -127,6 +127,7 @@ def init_db():
                     RESERVE_DAY TEXT NOT NULL,
                     RESERVE_TIME TEXT NOT NULL,
                     USER_ID TEXT NOT NULL,
+                    USER_EMAIL TEXT NOT NULL,
                     USER_NICKNAME TEXT NOT NULL,
                     FLOOR TEXT NOT NULL DEFAULT '',
                     ROOM_ID TEXT NOT NULL,
@@ -136,6 +137,18 @@ def init_db():
                     )
             """)
 
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ADD COLUMN IF NOT EXISTS USER_EMAIL TEXT;
+
+                UPDATE meeting_room_booking.ROOM_BOOKING
+                SET USER_EMAIL = 'temp@example.com'
+                WHERE USER_EMAIL IS NULL;
+
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ALTER COLUMN USER_EMAIL SET NOT NULL;
+                """)
+            
         connection.commit()
         print("테이블 생성 완료")
 
@@ -161,7 +174,7 @@ def generate_time_slots(start_time: str, end_time: str, interval_minutes: int = 
     return slots
 
 # 예약 저장하는 함수
-def save_booking(COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID, USER_ID, USER_NICKNAME, CREATED_AT, start_time, end_time):
+def save_booking(COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID, USER_ID, USER_EMAIL, USER_NICKNAME, CREATED_AT, start_time, end_time):
     connection = None
 
     try:
@@ -199,14 +212,15 @@ def save_booking(COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID, USER_ID, USER_NICKNAME
                 cursor.execute("""
                     INSERT INTO meeting_room_booking.ROOM_BOOKING (
                         COMPANY_ID, RESERVE_DAY, RESERVE_TIME,
-                        USER_ID, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT
+                        USER_ID, USER_EMAIL, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (
                         COMPANY_ID,
                         RESERVE_DAY,
                         slot, #RESERVE_TIME 에 저장
                         USER_ID,
+                        USER_EMAIL,
                         USER_NICKNAME,
                         FLOOR,
                         ROOM_ID,
@@ -433,8 +447,8 @@ def build_step1_modal(
             "floor_name": floor_name,
         }),
         "title": {"type": "plain_text", "text": "회의실 예약"},
-        "submit": {"type": "plain_text", "text": "다음"},
         "close": {"type": "plain_text", "text": "닫기"},
+        "submit": {"type": "plain_text", "text": "다음"},
         "blocks" : [
         {
             "type": "input",
@@ -647,6 +661,9 @@ def build_success_modal(company_id, floor_name, room_name, booking_date, start_t
             "type": "plain_text",
             "text": "닫기"
         },
+
+        # 전체 모달 창 닫기
+        "clear_on_close":True,
         "blocks": [
             {
                 "type": "section",
@@ -751,7 +768,9 @@ def handle_step2(ack, body, view, client):
     room_selected = values["room_block"]["room_action"].get("selected_option")
     start_selected = values["start_time_block"]["start_time_action"].get("selected_option")
     end_selected = values["end_time_block"]["end_time_action"].get("selected_option")
-
+    
+    # 이메일의 경우, 권한을 부여해야 함
+    
     room_id = room_selected["value"] if room_selected else None
     start_time = start_selected["value"] if start_selected else None
     end_time = end_selected["value"] if end_selected else None
@@ -806,7 +825,8 @@ def handle_step2(ack, body, view, client):
             FLOOR=floor_id,
             ROOM_ID=room_id,
             USER_ID=body["user"]["id"],
-            USER_NICKNAME=body["user"].get("username", ""),
+            USER_EMAIL=client.users_info(user=body["user"]["id"])["user"]["profile"]["email"],
+            USER_NICKNAME=client.users_info(user=body["user"]["id"])["user"]["profile"]["display_name"],
             CREATED_AT=datetime.now(SEOUL_TZ),
             start_time=start_time,
             end_time=end_time,
@@ -840,8 +860,9 @@ def handle_step2(ack, body, view, client):
 
     client.chat_postMessage(
         channel=body["user"]["id"],
-        text=f"회의실 예약 확인: {booking_date} / {room_name} / {start_time}~{end_time}"
+        text=f"회의실 예약 확인: {booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time}"
     )
+    
 
 def build_step3_modal(metadata:dict):
 
@@ -854,9 +875,10 @@ def build_step3_modal(metadata:dict):
 
     
     return {
-        "type": "section",
+        "type": "modal",
         "title": "회의실 예약",
-        "close": "닫기",
+        "callback_id": "step3_modal",
+        "close": {"type": "plain_text", "text": "닫기"},
         "text": {
             "type": "mrkdwn",
             "text": (
@@ -881,13 +903,13 @@ def build_step3_modal(metadata:dict):
                             "type": "plain_text",
                             "text": "조회"
                         },
-                        "url": "https://www.naver.com/"
+                        "url": URL
                     }
                 ]
             }
     }
 
-# 사용자 검색 기준 뒤에 있는 회의실 조회 (취소용) / 예약 버튼 눌렀을 때
+# 사용자 검색 기준 뒤에 있는 회의실 조회 / 취소 버튼 눌렀을 때
 def get_user_future_booking(user_id:str) -> list[dict]:
     connection = None
     
@@ -912,6 +934,7 @@ def get_user_future_booking(user_id:str) -> list[dict]:
                     FLOOR,
                     ROOM_ID,
                     USER_ID,
+                    USER_EMAIL,
                     USER_NICKNAME,
                     CREATED_AT,
                     MIN(RESERVE_TIME) AS START_TIME,
@@ -924,7 +947,7 @@ def get_user_future_booking(user_id:str) -> list[dict]:
                   )
                 GROUP BY
                     COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID,
-                    USER_ID, USER_NICKNAME, CREATED_AT
+                    USER_ID, USER_EMAIL, USER_NICKNAME, CREATED_AT
                 ORDER BY RESERVE_DAY, START_TIME
             """, (user_id, today, today, now_time))
 
@@ -932,7 +955,7 @@ def get_user_future_booking(user_id:str) -> list[dict]:
 
         results = []
         for row in rows:
-            company_id, reserve_day, floor, room_id, user_id, user_nickname, created_at, start_time, last_slot = row
+            company_id, reserve_day, floor, room_id, user_id, user_email, user_nickname, created_at, start_time, last_slot = row
             
             # 마지막 슬롯 + 30분 = 종료시간
             last_dt = datetime.strptime(str(last_slot)[:5], "%H:%M")
@@ -1009,7 +1032,7 @@ def build_entry_modal():
         "callback_id": "entry_modal",
         "title": {
             "type": "plain_text",
-            "text": "회의실 메뉴"
+            "text": "회의실 조회 및 취소"
         },
         "close": {
             "type": "plain_text",
@@ -1028,39 +1051,34 @@ def build_entry_modal():
                 "block_id": "entry_actions",
                 "elements": [
                     {
-                        "type": "actions",
-                        "block_id": "lookup_actions",
-                        "elements": [
-                            {
-                                "type": "button",
-                                "action_id": "open_web_lookup",
-                                "text": {
-                                    "type": "plain_text",
-                                    "text": "조회"
-                                },
-                                "url": URL
-                            }
-                        ]
+                        "type": "button",
+                        "action_id": "open_web_lookup",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "조회"
+                        },
+                        "url": URL
                     },
                     {
                         "type": "button",
                         "action_id": "go_lookup_cancel",
                         "text": {
                             "type": "plain_text",
-                            "text": "조회/취소"
+                            "text": "예약 취소"
                         },
                         "value": "lookup_cancel"
                     }
-                ]
+            ]
             }
         ]
     }
+
 # 예약 목록 모달 만드는 함수
-def build_booking_cancel_list(bookings: list[dict]):
+def build_booking_cancel_list(bookings=None):
     blocks = []
 
     if not bookings:
-        blocks.appned({
+        blocks.append({
             "type":"section",
             "text":{"type":"mrkdwn","text":"조회된 예약이 없습니다."}
         })
@@ -1076,6 +1094,13 @@ def build_booking_cancel_list(bookings: list[dict]):
                 "created_at": booking["created_at"],
                 "user_id": booking["user_id"],
             }
+            
+            # [] 을 두면 for문은 안 깨지지만 room_name에서 터짐
+            rooms_dict = ROOMS_BY_COMPANY.get(payload["company_id"])
+            
+            for room in rooms_dict:
+                if room["value"] == payload["room_id"]:
+                    room_name = room["text"]["text"]
 
             blocks.extend([
                 {
@@ -1083,7 +1108,7 @@ def build_booking_cancel_list(bookings: list[dict]):
                     "text": {
                         "type": "mrkdwn",
                         "text": (
-                            f"*{booking['room_name']}*\n"
+                            f"*{room_name}*\n"
                             f"{booking['reserve_day']} / {booking['start_time']}~{booking['end_time']}"
                         )
                     },
@@ -1113,6 +1138,7 @@ def build_booking_cancel_list(bookings: list[dict]):
         "blocks": blocks,
     }
 
+#views.open은 말 그대로 모달을 “처음 열 때” 쓰는 메서드고, views.push는 이미 열린 모달 스택에 새 뷰를 올리는 용도
 
 @app.command("/회의실조회및취소")
 def look_and_cancel_modal(ack, body, client):
@@ -1128,9 +1154,11 @@ def look_and_cancel_modal(ack, body, client):
 def click_cancel(ack, body, client):
     ack()
 
-    client.views_open(
-        trigger_id = body["trigger_id"],
-        view = build_booking_cancel_list()
+    client.views_update(
+        view_id=body["view"]["id"],
+        hash=body["view"]["hash"],
+        # view는 json 형태를 받아야 함.
+        view=build_booking_cancel_list(get_user_future_booking(body["user"]["id"]))
     )
 
 # view 는 slack의 submit 버튼에 해당하면 쓰는 것
@@ -1157,7 +1185,7 @@ def handle_cancel_booking(ack, body, client):
     client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
-        view=build_booking_cancel_list(get_user_future_booking(refreshed))
+        view=build_booking_cancel_list(refreshed)
     )
 
 # ----------------------------------------------------------------------------------------
@@ -1267,11 +1295,6 @@ def submit_booking(ack, body, view, client):
 
     ack()
 
-    # 각 사용자 앱에 DM 발송
-    client.chat_postMessage(
-        channel=body["user"]["id"],
-        text=f"회의실 예약 확인: {booking_date} / {room_name} / {start_time}~{end_time}",
-    )
 
 
 if __name__ == "__main__":
