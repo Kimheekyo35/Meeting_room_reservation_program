@@ -139,6 +139,45 @@ def init_db():
                 ALTER COLUMN USER_EMAIL SET NOT NULL
             """)
 
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ADD COLUMN IF NOT EXISTS BOOKING_STATUS TEXT
+            """)
+
+            cursor.execute("""
+                UPDATE meeting_room_booking.ROOM_BOOKING
+                SET BOOKING_STATUS = 'ACTIVE'
+                WHERE BOOKING_STATUS IS NULL
+            """)
+
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ALTER COLUMN BOOKING_STATUS SET DEFAULT 'ACTIVE'
+            """)
+
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ALTER COLUMN BOOKING_STATUS SET NOT NULL
+            """)
+
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ADD COLUMN IF NOT EXISTS CANCELLED_AT TIMESTAMPTZ
+            """)
+
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                DROP CONSTRAINT IF EXISTS UQ_ROOM_SLOT
+            """)
+
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS UQ_ROOM_SLOT_ACTIVE
+                ON meeting_room_booking.ROOM_BOOKING (
+                    COMPANY_ID, RESERVE_DAY, RESERVE_TIME, FLOOR, ROOM_ID
+                )
+                WHERE BOOKING_STATUS = 'ACTIVE'
+            """)
+
         connection.commit()
         print("테이블 생성 완료")
 
@@ -197,6 +236,7 @@ def save_booking(
                   AND RESERVE_DAY = %s
                   AND FLOOR = %s
                   AND ROOM_ID = %s
+                  AND BOOKING_STATUS = 'ACTIVE'
                   AND RESERVE_TIME = ANY(%s)
                 """,
                 (COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID, slots),
@@ -211,9 +251,10 @@ def save_booking(
                     """
                     INSERT INTO meeting_room_booking.ROOM_BOOKING (
                         COMPANY_ID, RESERVE_DAY, RESERVE_TIME,
-                        USER_ID, USER_EMAIL, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT
+                        USER_ID, USER_EMAIL, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT,
+                        BOOKING_STATUS
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE')
                     """,
                     (
                         COMPANY_ID,
@@ -262,6 +303,7 @@ def get_booked_slots(COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID):
                   AND RESERVE_DAY = %s
                   AND FLOOR = %s
                   AND ROOM_ID = %s
+                  AND BOOKING_STATUS = 'ACTIVE'
                 ORDER BY RESERVE_TIME
                 """,
                 (COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID),
@@ -675,6 +717,7 @@ def get_user_future_booking(user_id: str) -> list[dict]:
                     MAX(RESERVE_TIME) AS LAST_SLOT
                 FROM meeting_room_booking.ROOM_BOOKING
                 WHERE USER_ID = %s
+                  AND BOOKING_STATUS = 'ACTIVE'
                   AND (
                         RESERVE_DAY > %s
                         OR (RESERVE_DAY = %s AND RESERVE_TIME >= %s)
@@ -726,7 +769,7 @@ def get_user_future_booking(user_id: str) -> list[dict]:
             connection.close()
 
 
-def delete_booking_by_created_at(
+def cancel_booking_by_created_at(
     user_id: str,
     company_id: str,
     reserve_day: str,
@@ -749,21 +792,24 @@ def delete_booking_by_created_at(
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                DELETE FROM meeting_room_booking.ROOM_BOOKING
+                UPDATE meeting_room_booking.ROOM_BOOKING
+                SET BOOKING_STATUS = 'CANCELLED',
+                    CANCELLED_AT = NOW()
                 WHERE USER_ID = %s
                   AND COMPANY_ID = %s
                   AND RESERVE_DAY = %s
                   AND FLOOR = %s
                   AND ROOM_ID = %s
                   AND CREATED_AT = %s
+                  AND BOOKING_STATUS = 'ACTIVE'
                 """,
                 (user_id, company_id, reserve_day, floor, room_id, created_at),
             )
 
-            deleted_count = cursor.rowcount
+            cancelled_count = cursor.rowcount
 
         connection.commit()
-        return deleted_count
+        return cancelled_count
 
     except Exception:
         if connection:
@@ -1018,7 +1064,7 @@ def handle_cancel_booking(ack, body, client):
 
     payload = json.loads(body["actions"][0]["value"])
 
-    delete_booking_by_created_at(
+    cancel_booking_by_created_at(
         user_id=payload["user_id"],
         company_id=payload["company_id"],
         reserve_day=payload["reserve_day"],
