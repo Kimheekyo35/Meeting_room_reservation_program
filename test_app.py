@@ -1054,7 +1054,7 @@ def handle_modal_actions(ack, body, client):
         )
         return
 
-def notify_attendee(client, attendee_ids:list[str], booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
+def notify_attendee(client, attendee_ids:list[str], user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
     for user_id in attendee_ids or []:
 
 
@@ -1063,7 +1063,9 @@ def notify_attendee(client, attendee_ids:list[str], booking_date:str, company_id
 
         client.chat_postMessage(
             channel=dm_channel_id,
-            text=f"회의 초대 알림: {booking_date} / {company_id} / {floor} / {room_name} / {start_time}~{end_time}"
+            text=f"회의 초대 알림: {booking_date}\n"
+                 f"예약자: {user_nickname} \n"
+                 f"{company_id} / {floor} / {room_name} / {start_time}~{end_time}"
         )
 
 @app.view("reservation_step2")
@@ -1191,6 +1193,7 @@ def handle_step2(ack, body, view, client):
     notify_attendee(
         client=client,
         attendee_ids=attendee_ids,
+        user_nickname = user_nickname,
         booking_date=booking_date,
         company_id = company_id,
         floor = floor_name,
