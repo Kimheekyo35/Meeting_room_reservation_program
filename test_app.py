@@ -15,7 +15,7 @@ SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 SKIP_SLACK_AUTH_TEST = os.getenv("SLACK_SKIP_AUTH_TEST", "0").lower() in ("1", "true", "yes")
 
-  #   DB
+# DB
 DB_HOST = os.getenv("PG_HOST")
 DB_PORT = os.getenv("PG_PORT")
 DB_DATABASE = os.getenv("PG_DATABASE")
@@ -64,29 +64,29 @@ COMPANIES_FLOOR = {
 
 ROOMS_BY_COMPANY = {
     "메리츠타워": [
-        {"17F": {"text": {"type": "plain_text", "text": "1 회의실 [16인]"}, "value": "we_room_17F_1"}},
-        {"17F": {"text": {"type": "plain_text", "text": "3 회의실 [6인]"}, "value": "we_room_17F_3"}},
-        {"17F": {"text": {"type": "plain_text", "text": "4 회의실 [6인]"}, "value": "we_room_17F_4"}},
-        {"17F": {"text": {"type": "plain_text", "text": "5 회의실 [6인/모니터 X]"}, "value": "we_room_17F_5"}},
-        {"17F": {"text": {"type": "plain_text", "text": "6 회의실 [6인/화상회의]"}, "value": "we_room_17F_6"}},
+        {"17F": {"text": {"type": "plain_text", "text": "1회의실 [16인]"}, "value": "we_room_17F_1"}},
+        {"17F": {"text": {"type": "plain_text", "text": "3회의실 [6인]"}, "value": "we_room_17F_3"}},
+        {"17F": {"text": {"type": "plain_text", "text": "4회의실 [6인]"}, "value": "we_room_17F_4"}},
+        {"17F": {"text": {"type": "plain_text", "text": "5회의실 [6인/모니터 X]"}, "value": "we_room_17F_5"}},
+        {"17F": {"text": {"type": "plain_text", "text": "6회의실 [6인/화상회의]"}, "value": "we_room_17F_6"}},
     ],
     "GT타워": [
-        {"4F": {"text": {"type": "plain_text", "text": "2 회의실 [8인]"}, "value": "be_room_4F_2"}},
-        {"4F": {"text": {"type": "plain_text", "text": "3 회의실 [8인]"}, "value": "be_room_4F_3"}},
-        {"4F": {"text": {"type": "plain_text", "text": "4 회의실 [12인]"}, "value": "be_room_4F_4"}},
-        {"4F": {"text": {"type": "plain_text", "text": "5 회의실 [6인]"}, "value": "be_room_4F_5"}},
-        {"4F": {"text": {"type": "plain_text", "text": "6 회의실 [6인]"}, "value": "be_room_4F_6"}},
-        {"4F": {"text": {"type": "plain_text", "text": "7 회의실 [6인]"}, "value": "be_room_4F_7"}},
-        {"4F": {"text": {"type": "plain_text", "text": "8 회의실 [6인]"}, "value": "be_room_4F_8"}},
-        {"7F": {"text": {"type": "plain_text", "text": "1 회의실 [12인]"}, "value": "be_room_7F_1"}},
-        {"7F": {"text": {"type": "plain_text", "text": "2 회의실 [12인]"}, "value": "be_room_7F_2"}},
-        {"7F": {"text": {"type": "plain_text", "text": "3 회의실 [12인]"}, "value": "be_room_7F_3"}},
+        {"4F": {"text": {"type": "plain_text", "text": "2회의실 [8인]"}, "value": "be_room_4F_2"}},
+        {"4F": {"text": {"type": "plain_text", "text": "3회의실 [8인]"}, "value": "be_room_4F_3"}},
+        {"4F": {"text": {"type": "plain_text", "text": "4회의실 [12인]"}, "value": "be_room_4F_4"}},
+        {"4F": {"text": {"type": "plain_text", "text": "5회의실 [6인]"}, "value": "be_room_4F_5"}},
+        {"4F": {"text": {"type": "plain_text", "text": "6회의실 [6인]"}, "value": "be_room_4F_6"}},
+        {"4F": {"text": {"type": "plain_text", "text": "7회의실 [6인]"}, "value": "be_room_4F_7"}},
+        {"4F": {"text": {"type": "plain_text", "text": "8회의실 [6인]"}, "value": "be_room_4F_8"}},
+        {"7F": {"text": {"type": "plain_text", "text": "1회의실 [12인]"}, "value": "be_room_7F_1"}},
+        {"7F": {"text": {"type": "plain_text", "text": "2회의실 [12인]"}, "value": "be_room_7F_2"}},
+        {"7F": {"text": {"type": "plain_text", "text": "3회의실 [12인]"}, "value": "be_room_7F_3"}},
         {"14F": {"text": {"type": "plain_text", "text": "대회의실 "}, "value": "be_room_14F_Big"}},
-        {"14F": {"text": {"type": "plain_text", "text": "1 회의실 [12인]"}, "value": "be_room_14F_1"}},
-        {"14F": {"text": {"type": "plain_text", "text": "2 회의실 [12인]"}, "value": "be_room_14F_2"}},
-        {"14F": {"text": {"type": "plain_text", "text": "3 회의실 [8인]"}, "value": "be_room_14F_3"}},
-        {"14F": {"text": {"type": "plain_text", "text": "4 회의실 [8인]"}, "value": "be_room_14F_4"}},
-        {"14F": {"text": {"type": "plain_text", "text": "6 회의실 [8인]"}, "value": "be_room_14F_6"}},
+        {"14F": {"text": {"type": "plain_text", "text": "1회의실 [12인]"}, "value": "be_room_14F_1"}},
+        {"14F": {"text": {"type": "plain_text", "text": "2회의실 [12인]"}, "value": "be_room_14F_2"}},
+        {"14F": {"text": {"type": "plain_text", "text": "3회의실 [8인]"}, "value": "be_room_14F_3"}},
+        {"14F": {"text": {"type": "plain_text", "text": "4회의실 [8인]"}, "value": "be_room_14F_4"}},
+        {"14F": {"text": {"type": "plain_text", "text": "6회의실 [8인]"}, "value": "be_room_14F_6"}},
     ],
 }
 
@@ -179,19 +179,24 @@ def init_db():
             """)
 
             cursor.execute("""
-            ALTER TABLE meeting_room_booking.ROOM_BOOKING
-            ADD COLUMN IF NOT EXISTS BOOKING_GROUP_ID TEXT
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ADD COLUMN IF NOT EXISTS BOOKING_GROUP_ID TEXT
             """)
 
             cursor.execute("""
-            CREATE TABLE IF NOT EXISTS meeting_room_booking.ROOM_BOOKING_ATTENDEE (
+                CREATE TABLE IF NOT EXISTS meeting_room_booking.ROOM_BOOKING_ATTENDEE (
                 ID BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 BOOKING_GROUP_ID TEXT NOT NULL,
                 ATTENDEE_ID TEXT NOT NULL,
                 CREATED_AT TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 CONSTRAINT UQ_BOOKING_ATTENDEE UNIQUE (BOOKING_GROUP_ID, ATTENDEE_ID)
-            )
-        """)
+                )
+            """)
+
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING_ATTENDEE
+                ADD COLUMN IF NOT EXISTS ATTENDEE_NAME TEXT
+            """)
 
         connection.commit()
         print("테이블 생성 완료")
@@ -228,7 +233,7 @@ def save_booking(
     CREATED_AT,
     start_time,
     end_time,
-    attendee_ids: list[str] | None = None,
+    attendee_ids: list[str] | None = None
 ):
     connection = None
     booking_group_id = str(uuid.uuid4())
@@ -285,22 +290,24 @@ def save_booking(
                         FLOOR,
                         ROOM_ID,
                         CREATED_AT,
-                        booking_group_id,
+                        booking_group_id
                     ),
                 )
 
-            for attendee_id in attendee_ids:
+            # 참석자 DB 저장
+            for attendee in attendee_ids:
                 cursor.execute(
                     """
                     INSERT INTO meeting_room_booking.ROOM_BOOKING_ATTENDEE (
-                        BOOKING_GROUP_ID, ATTENDEE_ID
+                        BOOKING_GROUP_ID, ATTENDEE_ID, ATTENDEE_NAME
                     )
-                    VALUES (%s, %s)
+                    VALUES (%s, %s, %s)
                     ON CONFLICT (BOOKING_GROUP_ID, ATTENDEE_ID) DO NOTHING
                     """,
-                    (booking_group_id, attendee_id),
+                    (booking_group_id, 
+                    attendee["id"], 
+                    attendee["name"]),
                 )
-
         connection.commit()
         print("예약 저장 완료")
 
@@ -623,17 +630,6 @@ def build_step2_modal(
             "element": room_element,
         },
         {
-            "type": "input",
-            "block_id": "date_block",
-            "dispatch_action": True,
-            "label": {"type": "plain_text", "text": "날짜"},
-            "element": {
-                "type": "datepicker",
-                "action_id": "date_action",
-                "initial_date": booking_date,
-            },
-        },
-        {
             "type": "input",    
             "block_id": "attendee_block",
             "label": {"type": "plain_text", "text": "참석자"},
@@ -645,6 +641,17 @@ def build_step2_modal(
                     "text": "사람을 선택하세요"
                 }
             }
+        },
+        {
+            "type": "input",
+            "block_id": "date_block",
+            "dispatch_action": True,
+            "label": {"type": "plain_text", "text": "날짜"},
+            "element": {
+                "type": "datepicker",
+                "action_id": "date_action",
+                "initial_date": booking_date,
+            },
         },
         {
             "type": "input",
@@ -729,6 +736,70 @@ def build_success_modal(company_id, floor_name, room_name, booking_date, start_t
             },
         ],
     }
+
+
+def build_home_view():
+    return {
+        "type": "home",
+        "callback_id": "reservation_home",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*회의실 예약*\n홈에서 바로 예약 모달을 열 수 있습니다.",
+                },
+            },
+            {
+                "type": "actions",
+                "block_id": "home_actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "action_id": "open_room_booking_from_home",
+                        "text": {"type": "plain_text", "text": "회의실 예약"},
+                        "style": "primary",
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def publish_home(client, user_id: str):
+    client.views_publish(
+        user_id=user_id,
+        view=build_home_view(),
+    )
+
+
+def open_room_booking_modal(
+    client,
+    trigger_id: str | None,
+    logger,
+    source: str,
+    extra_metadata: dict | None = None,
+):
+    if not trigger_id:
+        logger.error("회의실 예약 모달 오픈 실패: trigger_id 없음 (source=%s)", source)
+        return False
+
+    view = build_step1_modal()
+    metadata = json.loads(view.get("private_metadata") or "{}")
+    if extra_metadata:
+        metadata.update({key: value for key, value in extra_metadata.items() if value is not None})
+        view["private_metadata"] = json.dumps(metadata)
+
+    try:
+        client.views_open(
+            trigger_id=trigger_id,
+            view=view,
+        )
+        logger.info("회의실 예약 모달 오픈 성공 (source=%s)", source)
+        return True
+    except Exception:
+        logger.exception("회의실 예약 모달 오픈 실패 (source=%s)", source)
+        return False
 
 
 def get_user_future_booking(user_id: str) -> list[dict]:
@@ -950,6 +1021,7 @@ def handle_step1(ack, body, view):
 @app.action("date_action")
 @app.action("start_time_action")
 @app.action("end_time_action")
+@app.action("attendee_action")
 def handle_modal_actions(ack, body, client):
     ack()
 
@@ -982,17 +1054,18 @@ def handle_modal_actions(ack, body, client):
         )
         return
 
-@app.action("attendee_action")
+def notify_attendee(client, attendee_ids:list[str], user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
+    for user_id in attendee_ids or []:
 
-def notify_attendee(client, attendee_ids:list[str], booking_date:str, room_name:str, start_time: str, end_time: str):
 
-    for user_id in attendee_ids:
         dm = client.conversations_open(users=[user_id])
         dm_channel_id = dm["channel"]["id"]
 
         client.chat_postMessage(
             channel=dm_channel_id,
-            text=f"회의 초대 알림: {booking_date} / {room_name} / {start_time}~{end_time}"
+            text=f"회의 초대 알림: {booking_date}\n"
+                 f"예약자: {user_nickname} \n"
+                 f"{company_id} / {floor} / {room_name} / {start_time}~{end_time}"
         )
 
 @app.view("reservation_step2")
@@ -1017,7 +1090,20 @@ def handle_step2(ack, body, view, client):
     floor_name = floor_option["text"]["text"] if floor_option else "-"
 
     room_name = get_room_name(company_id, floor_id, room_id)
-    attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users", [])
+    attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users",[])
+    
+    attendee_infos = []
+
+    for attendee_id in attendee_ids:
+        user_profile = client.users_info(user=attendee_id)["user"]
+        profile = user_profile.get("profile", {})
+        attendee_name = profile.get("display_name")
+        
+        #DB에 저장할 때 해당 dict을 꺼내서 저장함
+        attendee_infos.append({
+        "id" : attendee_id,
+        "name": attendee_name,
+        })
 
     if not room_id:
         ack({
@@ -1057,7 +1143,7 @@ def handle_step2(ack, body, view, client):
         or user_profile.get("real_name")
         or body["user"].get("username", "")
     )
-
+    
     try:
         save_booking(
             COMPANY_ID=company_id,
@@ -1070,7 +1156,7 @@ def handle_step2(ack, body, view, client):
             CREATED_AT=datetime.now(SEOUL_TZ),
             start_time=start_time,
             end_time=end_time,
-            attendee_ids=attendee_ids,
+            attendee_ids = attendee_infos
         )
     except ValueError:
         ack({
@@ -1103,14 +1189,37 @@ def handle_step2(ack, body, view, client):
         channel=body["user"]["id"],
         text=f"회의실 예약 확인: {booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time}",
     )
-    
+
     notify_attendee(
         client=client,
         attendee_ids=attendee_ids,
+        user_nickname = user_nickname,
         booking_date=booking_date,
+        company_id = company_id,
+        floor = floor_name,
         room_name=room_name,
         start_time=start_time,
         end_time=end_time,
+    )
+    
+
+@app.event("app_home_opened")
+def handle_app_home_opened(event, client, logger):
+    try:
+        publish_home(client, event["user"])
+    except Exception:
+        logger.exception("App Home publish 실패")
+
+
+@app.action("open_room_booking_from_home")
+def handle_open_room_booking_from_home(ack, body, client, logger):
+    ack()
+    logger.info("Home 탭에서 회의실 예약 버튼 클릭")
+    open_room_booking_modal(
+        client=client,
+        trigger_id=body.get("trigger_id"),
+        logger=logger,
+        source="home",
     )
 
 
@@ -1150,12 +1259,23 @@ def handle_cancel_booking(ack, body, client):
     )
 
 
-@app.command("/회의실")
-def open_booking_modal(ack, body, client):
+@app.shortcut("open_room_booking")
+def open_booking_modal(ack, shortcut, client, logger):
     ack()
-    client.views_open(
-        trigger_id=body["trigger_id"],
-        view=build_step1_modal(),
+
+    message = shortcut.get("message", {})
+    thread_ts = message.get("thread_ts") or message.get("ts")
+    channel = shortcut.get("channel", {})
+
+    open_room_booking_modal(
+        client=client,
+        trigger_id=shortcut.get("trigger_id"),
+        logger=logger,
+        source="shortcut",
+        extra_metadata={
+            "channel_id": channel.get("id"),
+            "thread_ts": thread_ts,
+        },
     )
 
 
