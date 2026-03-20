@@ -2,7 +2,7 @@ import os
 import json
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
+import uuid
 import psycopg2
 from psycopg2 import Error
 from slack_bolt import App
@@ -15,7 +15,7 @@ SEOUL_TZ = ZoneInfo("Asia/Seoul")
 
 SKIP_SLACK_AUTH_TEST = os.getenv("SLACK_SKIP_AUTH_TEST", "0").lower() in ("1", "true", "yes")
 
-# DB
+  #   DB
 DB_HOST = os.getenv("PG_HOST")
 DB_PORT = os.getenv("PG_PORT")
 DB_DATABASE = os.getenv("PG_DATABASE")
@@ -178,6 +178,21 @@ def init_db():
                 WHERE BOOKING_STATUS = 'ACTIVE'
             """)
 
+            cursor.execute("""
+            ALTER TABLE meeting_room_booking.ROOM_BOOKING
+            ADD COLUMN IF NOT EXISTS BOOKING_GROUP_ID TEXT
+            """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS meeting_room_booking.ROOM_BOOKING_ATTENDEE (
+                ID BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                BOOKING_GROUP_ID TEXT NOT NULL,
+                ATTENDEE_ID TEXT NOT NULL,
+                CREATED_AT TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT UQ_BOOKING_ATTENDEE UNIQUE (BOOKING_GROUP_ID, ATTENDEE_ID)
+            )
+        """)
+
         connection.commit()
         print("테이블 생성 완료")
 
@@ -213,8 +228,12 @@ def save_booking(
     CREATED_AT,
     start_time,
     end_time,
+    attendee_ids: list[str] | None = None,
 ):
     connection = None
+    booking_group_id = str(uuid.uuid4())
+    attendee_ids = attendee_ids or []
+
     try:
         connection = psycopg2.connect(
             host=DB_HOST,
@@ -252,9 +271,9 @@ def save_booking(
                     INSERT INTO meeting_room_booking.ROOM_BOOKING (
                         COMPANY_ID, RESERVE_DAY, RESERVE_TIME,
                         USER_ID, USER_EMAIL, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT,
-                        BOOKING_STATUS
+                        BOOKING_STATUS, BOOKING_GROUP_ID
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE')
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE', %s)
                     """,
                     (
                         COMPANY_ID,
@@ -266,7 +285,20 @@ def save_booking(
                         FLOOR,
                         ROOM_ID,
                         CREATED_AT,
+                        booking_group_id,
                     ),
+                )
+
+            for attendee_id in attendee_ids:
+                cursor.execute(
+                    """
+                    INSERT INTO meeting_room_booking.ROOM_BOOKING_ATTENDEE (
+                        BOOKING_GROUP_ID, ATTENDEE_ID
+                    )
+                    VALUES (%s, %s)
+                    ON CONFLICT (BOOKING_GROUP_ID, ATTENDEE_ID) DO NOTHING
+                    """,
+                    (booking_group_id, attendee_id),
                 )
 
         connection.commit()
@@ -600,6 +632,19 @@ def build_step2_modal(
                 "action_id": "date_action",
                 "initial_date": booking_date,
             },
+        },
+        {
+            "type": "input",    
+            "block_id": "attendee_block",
+            "label": {"type": "plain_text", "text": "참석자"},
+            "element": {
+                "type": "multi_users_select",
+                "action_id": "attendee_action",
+                "placeholder": {
+                    "type": "plain_text",
+                    "text": "사람을 선택하세요"
+                }
+            }
         },
         {
             "type": "input",
@@ -937,6 +982,18 @@ def handle_modal_actions(ack, body, client):
         )
         return
 
+@app.action("attendee_action")
+
+def notify_attendee(client, attendee_ids:list[str], booking_date:str, room_name:str, start_time: str, end_time: str):
+
+    for user_id in attendee_ids:
+        dm = client.conversations_open(users=[user_id])
+        dm_channel_id = dm["channel"]["id"]
+
+        client.chat_postMessage(
+            channel=dm_channel_id,
+            text=f"회의 초대 알림: {booking_date} / {room_name} / {start_time}~{end_time}"
+        )
 
 @app.view("reservation_step2")
 def handle_step2(ack, body, view, client):
@@ -960,6 +1017,7 @@ def handle_step2(ack, body, view, client):
     floor_name = floor_option["text"]["text"] if floor_option else "-"
 
     room_name = get_room_name(company_id, floor_id, room_id)
+    attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users", [])
 
     if not room_id:
         ack({
@@ -1012,6 +1070,7 @@ def handle_step2(ack, body, view, client):
             CREATED_AT=datetime.now(SEOUL_TZ),
             start_time=start_time,
             end_time=end_time,
+            attendee_ids=attendee_ids,
         )
     except ValueError:
         ack({
@@ -1043,6 +1102,15 @@ def handle_step2(ack, body, view, client):
     client.chat_postMessage(
         channel=body["user"]["id"],
         text=f"회의실 예약 확인: {booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time}",
+    )
+    
+    notify_attendee(
+        client=client,
+        attendee_ids=attendee_ids,
+        booking_date=booking_date,
+        room_name=room_name,
+        start_time=start_time,
+        end_time=end_time,
     )
 
 
