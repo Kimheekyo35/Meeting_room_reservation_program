@@ -404,40 +404,43 @@ def build_placeholder_option(text: str, value: str = "__none__") -> list[dict]:
     return [{"text": {"type": "plain_text", "text": text}, "value": value}]
 
 
+# def find_available_start_slots(booked_slots: set[str]) -> list[str]:
+#     starts = []
+#     for i, start in enumerate(TIME_SLOTS[:-1]):
+#         if start in booked_slots:
+#             continue
+
+#         has_end = False
+#         for j in range(i + 1, len(TIME_SLOTS)):
+#             covered = TIME_SLOTS[i:j]
+#             if any(s in booked_slots for s in covered):
+#                 break
+#             has_end = True
+
+#         if has_end:
+#             starts.append(start)
+
+#     return starts
 def find_available_start_slots(booked_slots: set[str]) -> list[str]:
-    starts = []
-    for i, start in enumerate(TIME_SLOTS[:-1]):
-        if start in booked_slots:
-            continue
-
-        has_end = False
-        for j in range(i + 1, len(TIME_SLOTS)):
-            covered = TIME_SLOTS[i:j]
-            if any(s in booked_slots for s in covered):
-                break
-            has_end = True
-
-        if has_end:
-            starts.append(start)
-
-    return starts
+    return [slot for slot in TIME_SLOTS[:-1] if slot not in booked_slots]
 
 
 def find_available_end_slots(start_time: str | None, booked_slots: set[str]) -> list[str]:
     if not start_time or start_time not in TIME_SLOTS:
         return []
 
+    # 시작 시간의 인덱스
     i = TIME_SLOTS.index(start_time)
     ends = []
-
     for j in range(i + 1, len(TIME_SLOTS)):
         covered = TIME_SLOTS[i:j]
+
         if any(s in booked_slots for s in covered):
             break
+        
         ends.append(TIME_SLOTS[j])
 
     return ends
-
 
 def parse_current_context_from_body(body):
     view = body["view"]
@@ -747,7 +750,7 @@ def build_home_view():
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "*회의실 예약*\n홈에서 바로 예약 모달을 열 수 있습니다.",
+                    "text": "*회의실 예약*\n홈에서 바로 예약 및 조회 할 수 있습니다.",
                 },
             },
             {
@@ -757,7 +760,7 @@ def build_home_view():
                     {
                         "type": "button",
                         "action_id": "open_room_booking_from_home",
-                        "text": {"type": "plain_text", "text": "회의실 예약"},
+                        "text": {"type": "plain_text", "text": "회의실 예약 및 조회"},
                         "style": "primary",
                     },
                 ],
@@ -1022,6 +1025,7 @@ def handle_step1(ack, body, view):
 @app.action("start_time_action")
 @app.action("end_time_action")
 @app.action("attendee_action")
+
 def handle_modal_actions(ack, body, client):
     ack()
 
@@ -1065,9 +1069,36 @@ def notify_attendee(client, attendee_ids:list[str], user_nickname:str, booking_d
             channel=dm_channel_id,
             text=f"회의 초대 알림: {booking_date}\n"
                  f"예약자: {user_nickname} \n"
-                 f"{company_id} / {floor} / {room_name} / {start_time}~{end_time}"
+                 f"{company_id} / {floor} / {room_name} / {start_time}~{end_time}",
+            blocks=[
+                {
+                    "type":"section",
+                    "text":{
+                        "type":"mrkdwn",
+                        "text":(
+                            f"*회의실 예약 확인*\n"
+                            f"{booking_date} / {company_id} / {floor} / {room_name} / {start_time}~{end_time}"
+                        )}},
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "조회"},
+                            "url":URL,
+                            "action_id": "booking_view"
+                        },
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "예약 취소"},
+                            "style": "danger",
+                            "action_id": "booking_cancel",
+                            "value": "cancel"
+                        }
+                    ]
+                }
+            ]
         )
-
 @app.view("reservation_step2")
 def handle_step2(ack, body, view, client):
     values = view["state"]["values"]
@@ -1187,7 +1218,37 @@ def handle_step2(ack, body, view, client):
 
     client.chat_postMessage(
         channel=body["user"]["id"],
-        text=f"회의실 예약 확인: {booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time}",
+        text=f"회의실 예약 확인: {booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time} \n",
+        blocks=[
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text":(
+                        f"*회의실 예약 확인*\n"
+                        f"{booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time}"
+                    )
+                }
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "조회"},
+                        "action_id": "booking_view",
+                        "value": "view"
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "예약 취소"},
+                        "style": "danger",
+                        "action_id": "booking_cancel",
+                        "value": "cancel"
+                    }
+                ]
+            }
+        ]
     )
 
     notify_attendee(
@@ -1222,6 +1283,17 @@ def handle_open_room_booking_from_home(ack, body, client, logger):
         source="home",
     )
 
+
+@app.action("booking_cancel")
+def click_cancel(ack, body, client):
+    ack()
+    user_id = body["user"]["id"]
+
+    # 모달을 띄우려면 이렇게 해야됨
+    client.views_open(
+        trigger_id=body["trigger_id"],
+        view=build_booking_cancel_list(get_user_future_booking(user_id))
+    )
 
 @app.action("go_lookup_cancel")
 def click_cancel(ack, body, client):
@@ -1258,7 +1330,8 @@ def handle_cancel_booking(ack, body, client):
         view=build_booking_cancel_list(refreshed),
     )
 
-
+# @app.action("booking_view")
+# @app.action("booking_cancel")
 @app.shortcut("open_room_booking")
 def open_booking_modal(ack, shortcut, client, logger):
     ack()
