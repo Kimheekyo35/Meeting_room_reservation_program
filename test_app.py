@@ -515,7 +515,7 @@ def build_step1_modal(company_id: str | None = None, floor_id: str | None = None
                     {
                         "type": "button",
                         "action_id": "open_web_lookup",
-                        "text": {"type": "plain_text", "text": ":blush: 조회"},
+                        "text": {"type": "plain_text", "text": ":mag: 조회"},
                         "url": URL,
                     },
                     {
@@ -726,7 +726,7 @@ def build_success_modal(company_id, floor_name, room_name, booking_date, start_t
                     {
                         "type": "button",
                         "action_id": "open_web_lookup",
-                        "text": {"type": "plain_text", "text": ":blush: 조회"},
+                        "text": {"type": "plain_text", "text": ":mag: 조회"},
                         "url": URL,
                     },
                     {
@@ -1059,46 +1059,61 @@ def handle_modal_actions(ack, body, client):
         return
 
 def notify_attendee(client, attendee_ids:list[str], user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
-    for user_id in attendee_ids or []:
+    user_name_list = []
 
+    for user in attendee_ids or []:
+        user_profile = client.users_info(user=user)["user"]
+        profile = user_profile.get("profile", {})
+        attendee_name = profile.get("display_name")
+        user_name_list.append(attendee_name)
+    # 문자열로 변환
+    attendee_text = ", ".join(user_name_list)
+    for user_id in attendee_ids or []:
 
         dm = client.conversations_open(users=[user_id])
         dm_channel_id = dm["channel"]["id"]
 
         client.chat_postMessage(
             channel=dm_channel_id,
-            text=f"회의 초대 알림: {booking_date}\n"
-                 f"예약자: {user_nickname} \n"
-                 f"{company_id} / {floor} / {room_name} / {start_time}~{end_time}",
+            text=(
+                f"*회의 초대 알림*\n"
+                f"`예약자`: {user_nickname}\n"
+                f"`위치`: {company_id} {floor} {room_name}\n"
+                f"`예약 시간`: {booking_date} {start_time}~{end_time}\n"
+                f"`참석자`: {attendee_text}"
+            ),
             blocks=[
                 {
                     "type":"section",
                     "text":{
                         "type":"mrkdwn",
                         "text":(
-                            f"*회의실 예약 확인*\n"
-                            f"{booking_date} / {company_id} / {floor} / {room_name} / {start_time}~{end_time}"
+                            f"*회의 초대 알림*\n"
+                            f"`예약자`: {user_nickname} \n"
+                            f"`위치`: {company_id} {floor} {room_name} \n"
+                            f"`예약 시간`: {booking_date} {start_time}~{end_time} \n"
+                            f"`참석자`: {attendee_text}"
                         )}},
                 {
                     "type": "actions",
                     "elements": [
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": "조회"},
+                            "text": {"type": "plain_text", "text": ":mag: 조회"},
                             "url":URL,
                             "action_id": "booking_view"
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "예약 취소"},
-                            "style": "danger",
-                            "action_id": "booking_cancel",
-                            "value": "cancel"
                         }
                     ]
                 }
             ]
         )
+
+@app.action("booking_view")
+def handle_booking_view(ack, body, logger):
+    ack()
+    logger.info(body)
+
+
 @app.view("reservation_step2")
 def handle_step2(ack, body, view, client):
     values = view["state"]["values"]
@@ -1215,6 +1230,10 @@ def handle_step2(ack, body, view, client):
             end_time=end_time,
         ),
     })
+    
+    # 참석자 이름 추출하기
+    name_list = [info["name"] for info in attendee_infos if info.get("name")]
+    attendee_name_text = ", ".join(name_list)
 
     client.chat_postMessage(
         channel=body["user"]["id"],
@@ -1226,7 +1245,10 @@ def handle_step2(ack, body, view, client):
                     "type": "mrkdwn",
                     "text":(
                         f"*회의실 예약 확인*\n"
-                        f"{booking_date} / {company_id} / {floor_name} / {room_name} / {start_time}~{end_time}"
+                        f"`예약자`: {user_nickname} \n"
+                        f"`위치`: {company_id} {floor_name} {room_name} \n"
+                        f"`예약 시간`:{booking_date} {start_time}~{end_time} \n"
+                        f"`참석자`: {attendee_name_text} \n"
                     )
                 }
             },
@@ -1235,13 +1257,13 @@ def handle_step2(ack, body, view, client):
                 "elements": [
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "조회"},
-                        "action_id": "booking_view",
-                        "value": "view"
+                        "text": {"type": "plain_text", "text": ":mag: 조회"},
+                        "url":URL,
+                        "action_id": "booking_view"
                     },
                     {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "예약 취소"},
+                        "text": {"type": "plain_text", "text": ":warning: 예약 취소"},
                         "style": "danger",
                         "action_id": "booking_cancel",
                         "value": "cancel"
@@ -1330,8 +1352,7 @@ def handle_cancel_booking(ack, body, client):
         view=build_booking_cancel_list(refreshed),
     )
 
-# @app.action("booking_view")
-# @app.action("booking_cancel")
+
 @app.shortcut("open_room_booking")
 def open_booking_modal(ack, shortcut, client, logger):
     ack()
