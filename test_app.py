@@ -40,10 +40,7 @@ TIME_SLOTS = [
     "16:00", "16:30",
     "17:00", "17:30",
     "18:00", "18:30",
-    "19:00", "19:30",
-    "20:00", "20:30",
-    "21:00", "21:30",
-    "22:00"
+    "19:00"
 ]
 
 COMPANIES = [
@@ -1058,7 +1055,7 @@ def handle_modal_actions(ack, body, client):
         )
         return
 
-def notify_attendee(client, attendee_ids:list[str], user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
+def notify_attendee(client, attendee_ids:list[str], usernickname_id:str, user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
     user_name_list = []
 
     for user in attendee_ids or []:
@@ -1066,9 +1063,13 @@ def notify_attendee(client, attendee_ids:list[str], user_nickname:str, booking_d
         profile = user_profile.get("profile", {})
         attendee_name = profile.get("display_name")
         user_name_list.append(attendee_name)
+    
     # 문자열로 변환
     attendee_text = ", ".join(user_name_list)
     for user_id in attendee_ids or []:
+        # 예약자와 참석자가 같을 경우 제외
+        if usernickname_id == user_id:
+            break
 
         dm = client.conversations_open(users=[user_id])
         dm_channel_id = dm["channel"]["id"]
@@ -1189,6 +1190,8 @@ def handle_step2(ack, body, view, client):
         or user_profile.get("real_name")
         or body["user"].get("username", "")
     )
+    # 예약자 id
+    usernickname_id = body["user"]["id"] 
     
     try:
         save_booking(
@@ -1276,6 +1279,7 @@ def handle_step2(ack, body, view, client):
     notify_attendee(
         client=client,
         attendee_ids=attendee_ids,
+        usernickname_id = usernickname_id,
         user_nickname = user_nickname,
         booking_date=booking_date,
         company_id = company_id,
