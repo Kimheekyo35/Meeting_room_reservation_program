@@ -842,7 +842,7 @@ def open_room_booking_modal(
         return False
 
 
-def get_user_future_booking(user_id: str) -> list[dict]:
+def get_user_future_booking(user_email: str) -> list[dict]:
     connection = None
     try:
         now = datetime.now(SEOUL_TZ)
@@ -865,14 +865,13 @@ def get_user_future_booking(user_id: str) -> list[dict]:
                     RESERVE_DAY,
                     FLOOR,
                     ROOM_ID,
-                    USER_ID,
                     USER_EMAIL,
                     USER_NICKNAME,
                     CREATED_AT,
                     MIN(RESERVE_TIME) AS START_TIME,
                     MAX(RESERVE_TIME) AS LAST_SLOT
                 FROM meeting_room_booking.ROOM_BOOKING
-                WHERE USER_ID = %s
+                WHERE USER_EMAIL = %s
                   AND BOOKING_STATUS = 'ACTIVE'
                   AND (
                         RESERVE_DAY > %s
@@ -880,10 +879,10 @@ def get_user_future_booking(user_id: str) -> list[dict]:
                   )
                 GROUP BY
                     COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID,
-                    USER_ID, USER_EMAIL, USER_NICKNAME, CREATED_AT
+                    USER_EMAIL, USER_NICKNAME, CREATED_AT
                 ORDER BY RESERVE_DAY, START_TIME
                 """,
-                (user_id, today, today, now_time),
+                (user_email, today, today, now_time),
             )
 
             rows = cursor.fetchall()
@@ -895,7 +894,6 @@ def get_user_future_booking(user_id: str) -> list[dict]:
                 reserve_day,
                 floor,
                 room_id,
-                user_id,
                 user_email,
                 user_nickname,
                 created_at,
@@ -911,7 +909,7 @@ def get_user_future_booking(user_id: str) -> list[dict]:
                 "reserve_day": reserve_day,
                 "floor": floor,
                 "room_id": room_id,
-                "user_id": user_id,
+                "user_email": user_email,
                 "user_nickname": user_nickname,
                 "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at),
                 "start_time": str(start_time)[:5],
@@ -926,7 +924,7 @@ def get_user_future_booking(user_id: str) -> list[dict]:
 
 
 def cancel_booking_by_created_at(
-    user_id: str,
+    user_email: str,
     company_id: str,
     reserve_day: str,
     floor: str,
@@ -951,7 +949,7 @@ def cancel_booking_by_created_at(
                 UPDATE meeting_room_booking.ROOM_BOOKING
                 SET BOOKING_STATUS = 'CANCELLED',
                     CANCELLED_AT = NOW()
-                WHERE USER_ID = %s
+                WHERE USER_EMAIL = %s
                   AND COMPANY_ID = %s
                   AND RESERVE_DAY = %s
                   AND FLOOR = %s
@@ -959,7 +957,7 @@ def cancel_booking_by_created_at(
                   AND CREATED_AT = %s
                   AND BOOKING_STATUS = 'ACTIVE'
                 """,
-                (user_id, company_id, reserve_day, floor, room_id, created_at),
+                (user_email, company_id, reserve_day, floor, room_id, created_at),
             )
 
             cancelled_count = cursor.rowcount
@@ -993,7 +991,7 @@ def build_booking_cancel_list(bookings=None):
                 "floor": booking["floor"],
                 "room_id": booking["room_id"],
                 "created_at": booking["created_at"],
-                "user_id": booking["user_id"],
+                "user_email": booking["user_email"],
             }
 
             room_name = get_room_name(
@@ -1363,23 +1361,27 @@ def handle_open_room_booking_from_home(ack, body, client, logger):
 @app.action("booking_cancel")
 def click_cancel(ack, body, client):
     ack()
-    user_id = body["user"]["id"]
+    
+    user_profile = client.users_info(user=body["user"]["id"])["user"]["profile"]
+    user_email = user_profile.get("email", "")
 
     # 모달을 띄우려면 이렇게 해야됨
     client.views_open(
         trigger_id=body["trigger_id"],
-        view=build_booking_cancel_list(get_user_future_booking(user_id))
+        view=build_booking_cancel_list(get_user_future_booking(user_email))
     )
 
 @app.action("go_lookup_cancel")
 def click_cancel(ack, body, client):
     ack()
-    user_id = body["user"]["id"]
+
+    user_profile = client.users_info(user=body["user"]["id"])["user"]["profile"]
+    user_email = user_profile.get("email", "")
 
     client.views_update(
         view_id=body["view"]["id"],
         hash=body["view"]["hash"],
-        view=build_booking_cancel_list(get_user_future_booking(user_id)),
+        view=build_booking_cancel_list(get_user_future_booking(user_email)),
     )
 
 
@@ -1389,8 +1391,11 @@ def handle_cancel_booking(ack, body, client):
 
     payload = json.loads(body["actions"][0]["value"])
 
+    user_profile = client.users_info(user=body["user"]["id"])["user"]["profile"]
+    user_email = user_profile.get("email", "")
+
     cancel_booking_by_created_at(
-        user_id=payload["user_id"],
+        user_email=user_email,
         company_id=payload["company_id"],
         reserve_day=payload["reserve_day"],
         floor=payload["floor"],
@@ -1398,7 +1403,7 @@ def handle_cancel_booking(ack, body, client):
         created_at=payload["created_at"],
     )
 
-    refreshed = get_user_future_booking(payload["user_id"])
+    refreshed = get_user_future_booking(user_email)
 
     client.views_update(
         view_id=body["view"]["id"],
