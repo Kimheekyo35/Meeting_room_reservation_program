@@ -1,2 +1,5 @@
- slack-bolt
- google_auth_oauthlib
+slack-bolt
+slack-sdk
+python-dotenv
+psycopg2-binary
+google_auth_oauthlib
