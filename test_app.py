@@ -181,6 +181,22 @@ def init_db():
             """)
 
             cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ADD COLUMN IF NOT EXISTS USING_REASON TEXT
+            """)
+
+            cursor.execute("""
+                UPDATE meeting_room_booking.ROOM_BOOKING
+                SET USING_REASON = '없음'
+                WHERE USING_REASON IS NULL
+            """)
+
+            cursor.execute("""
+                ALTER TABLE meeting_room_booking.ROOM_BOOKING
+                ALTER COLUMN USING_REASON SET NOT NULL
+            """)
+
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS meeting_room_booking.ROOM_BOOKING_ATTENDEE (
                 ID BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 BOOKING_GROUP_ID TEXT NOT NULL,
@@ -194,6 +210,7 @@ def init_db():
                 ALTER TABLE meeting_room_booking.ROOM_BOOKING_ATTENDEE
                 ADD COLUMN IF NOT EXISTS ATTENDEE_NAME TEXT
             """)
+
 
         connection.commit()
         print("테이블 생성 완료")
@@ -230,7 +247,8 @@ def save_booking(
     CREATED_AT,
     start_time,
     end_time,
-    attendee_ids: list[str] | None = None
+    USING_REASON,
+    attendee_ids: list[str] | None = None,
 ):
     connection = None
     booking_group_id = str(uuid.uuid4())
@@ -273,9 +291,9 @@ def save_booking(
                     INSERT INTO meeting_room_booking.ROOM_BOOKING (
                         COMPANY_ID, RESERVE_DAY, RESERVE_TIME,
                         USER_ID, USER_EMAIL, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT,
-                        BOOKING_STATUS, BOOKING_GROUP_ID
+                        BOOKING_STATUS, BOOKING_GROUP_ID, USING_REASON
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE', %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE', %s, %s)
                     """,
                     (
                         COMPANY_ID,
@@ -287,7 +305,8 @@ def save_booking(
                         FLOOR,
                         ROOM_ID,
                         CREATED_AT,
-                        booking_group_id
+                        booking_group_id,
+                        USING_REASON
                     ),
                 )
 
@@ -450,9 +469,10 @@ def parse_current_context_from_body(body):
     booking_date = state_date_value(state_values, "date_block", "date_action") or meta.get("booking_date")
     start_time = meta.get("start_time")
     end_time = meta.get("end_time")
-
+    
     action = body.get("actions", [{}])[0]
     action_id = action.get("action_id")
+
 
     if action_id == "company_action":
         company_id = action["selected_option"]["value"]
@@ -460,22 +480,27 @@ def parse_current_context_from_body(body):
         room_id = None
         start_time = None
         end_time = None
+
     elif action_id == "floor_action":
         floor_id = action["selected_option"]["value"]
         room_id = None
         start_time = None
         end_time = None
+
     elif action_id == "room_action":
         room_id = action["selected_option"]["value"]
         start_time = None
         end_time = None
+
     elif action_id == "date_action":
         booking_date = action["selected_date"]
         start_time = None
         end_time = None
+
     elif action_id == "start_time_action":
         start_time = action["selected_option"]["value"]
         end_time = None
+
     elif action_id == "end_time_action":
         end_time = action["selected_option"]["value"]
 
@@ -562,6 +587,7 @@ def build_step2_modal(
     start_time: str | None = None,
     end_time: str | None = None,
     error_text: str | None = None,
+    using_reason: str | None = None
 ):
     floor_options = COMPANIES_FLOOR.get(company_id, [])
     floor_option = find_option(floor_options, floor_id) if floor_id else None
@@ -630,6 +656,19 @@ def build_step2_modal(
             "element": room_element,
         },
         {
+			"type": "input",
+            "block_id":"using_reason_block",
+			"element": {
+				"type": "plain_text_input",
+				"action_id": "plain_text_input-action"
+			},
+			"label": {
+				"type": "plain_text",
+				"text": "이용 목적"
+			},
+			"optional": False
+		},
+        {
             "type": "input",    
             "block_id": "attendee_block",
             "label": {"type": "plain_text", "text": "참석자"},
@@ -695,7 +734,7 @@ def build_step2_modal(
     }
 
 
-def build_success_modal(company_id, floor_name, room_name, booking_date, start_time, end_time):
+def build_success_modal(company_id, floor_name, room_name, booking_date, start_time, end_time, using_reason):
     return {
         "type": "modal",
         "callback_id": "reservation_success",
@@ -712,7 +751,8 @@ def build_success_modal(company_id, floor_name, room_name, booking_date, start_t
                         f"{company_id} {floor_name}\n"
                         f"• 장소: {room_name}\n"
                         f"• 날짜: {booking_date}\n"
-                        f"• 시간: {start_time} ~ {end_time}"
+                        f"• 시간: {start_time} ~ {end_time} \n"
+                        f"• 이용 목적: {using_reason}"
                     ),
                 },
             },
@@ -1050,12 +1090,12 @@ def handle_modal_actions(ack, body, client):
                 room_id=room_id,
                 booking_date=booking_date,
                 start_time=start_time,
-                end_time=end_time,
+                end_time=end_time
             ),
         )
         return
 
-def notify_attendee(client, attendee_ids:list[str], usernickname_id:str, user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str):
+def notify_attendee(client, attendee_ids:list[str], usernickname_id:str, user_nickname:str, booking_date:str, company_id:str, floor:str, room_name:str, start_time: str, end_time: str, using_reason: str):
     user_name_list = []
 
     for user in attendee_ids or []:
@@ -1081,7 +1121,9 @@ def notify_attendee(client, attendee_ids:list[str], usernickname_id:str, user_ni
                 f"`예약자`: {user_nickname}\n"
                 f"`위치`: {company_id} {floor} {room_name}\n"
                 f"`예약 시간`: {booking_date} {start_time}~{end_time}\n"
-                f"`참석자`: {attendee_text}"
+                f"`참석자`: {attendee_text} \n"
+                f"`이용 목적`: {using_reason}"
+                
             ),
             blocks=[
                 {
@@ -1093,7 +1135,8 @@ def notify_attendee(client, attendee_ids:list[str], usernickname_id:str, user_ni
                             f"`예약자`: {user_nickname} \n"
                             f"`위치`: {company_id} {floor} {room_name} \n"
                             f"`예약 시간`: {booking_date} {start_time}~{end_time} \n"
-                            f"`참석자`: {attendee_text}"
+                            f"`참석자`: {attendee_text} \n"
+                            f"`이용 목적`: {using_reason}"
                         )}},
                 {
                     "type": "actions",
@@ -1139,6 +1182,8 @@ def handle_step2(ack, body, view, client):
     room_name = get_room_name(company_id, floor_id, room_id)
     attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users",[])
     
+    using_reason = values["using_reason_block"]["plain_text_input-action"]["value"]
+
     attendee_infos = []
 
     for attendee_id in attendee_ids:
@@ -1205,7 +1250,8 @@ def handle_step2(ack, body, view, client):
             CREATED_AT=datetime.now(SEOUL_TZ),
             start_time=start_time,
             end_time=end_time,
-            attendee_ids = attendee_infos
+            USING_REASON = using_reason,
+            attendee_ids = attendee_infos,
         )
     except ValueError:
         ack({
@@ -1218,6 +1264,7 @@ def handle_step2(ack, body, view, client):
                 start_time=None,
                 end_time=None,
                 error_text="해당 시간에 이미 예약된 회의실입니다. 다른 시간을 골라주세요.",
+                using_reason=using_reason
             ),
         })
         return
@@ -1231,6 +1278,7 @@ def handle_step2(ack, body, view, client):
             booking_date=booking_date,
             start_time=start_time,
             end_time=end_time,
+            using_reason=using_reason
         ),
     })
     
@@ -1252,6 +1300,7 @@ def handle_step2(ack, body, view, client):
                         f"`위치`: {company_id} {floor_name} {room_name} \n"
                         f"`예약 시간`:{booking_date} {start_time}~{end_time} \n"
                         f"`참석자`: {attendee_name_text} \n"
+                        f"`이용 목적`: {using_reason}"
                     )
                 }
             },
@@ -1287,6 +1336,7 @@ def handle_step2(ack, body, view, client):
         room_name=room_name,
         start_time=start_time,
         end_time=end_time,
+        using_reason=using_reason
     )
     
 
