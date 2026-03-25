@@ -187,28 +187,7 @@ def init_db():
 
             cursor.execute("""
                 ALTER TABLE meeting_room_booking.ROOM_BOOKING
-                ADD COLUMN IF NOT EXISTS REMINDER_SENT_AT TIMESTAMPTZ
-            """)
-
-            cursor.execute("""
-                ALTER TABLE meeting_room_booking.ROOM_BOOKING
-                ADD COLUMN IF NOT EXISTS REMINDER_ENABLED BOOLEAN
-            """)
-
-            cursor.execute("""
-                UPDATE meeting_room_booking.ROOM_BOOKING
-                SET REMINDER_ENABLED = FALSE
-                WHERE REMINDER_ENABLED IS NULL
-            """)
-
-            cursor.execute("""
-                ALTER TABLE meeting_room_booking.ROOM_BOOKING
-                ALTER COLUMN REMINDER_ENABLED SET DEFAULT FALSE
-            """)
-
-            cursor.execute("""
-                ALTER TABLE meeting_room_booking.ROOM_BOOKING
-                ALTER COLUMN REMINDER_ENABLED SET NOT NULL
+                DROP COLUMN IF EXISTS REMINDER_ENABLED
             """)
 
             cursor.execute("""
@@ -274,7 +253,6 @@ def save_booking(
     start_time,
     end_time,
     USING_REASON,
-    REMINDER_ENABLED=False,
     attendee_ids: list[str] | None = None,
 ):
     connection = None
@@ -318,9 +296,9 @@ def save_booking(
                     INSERT INTO meeting_room_booking.ROOM_BOOKING (
                         COMPANY_ID, RESERVE_DAY, RESERVE_TIME,
                         USER_ID, USER_EMAIL, USER_NICKNAME, FLOOR, ROOM_ID, CREATED_AT,
-                        BOOKING_STATUS, BOOKING_GROUP_ID, USING_REASON, REMINDER_ENABLED
+                        BOOKING_STATUS, BOOKING_GROUP_ID, USING_REASON
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE', %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'ACTIVE', %s, %s)
                     """,
                     (
                         COMPANY_ID,
@@ -334,7 +312,6 @@ def save_booking(
                         CREATED_AT,
                         booking_group_id,
                         USING_REASON,
-                        REMINDER_ENABLED
                     ),
                 )
 
@@ -448,23 +425,6 @@ def build_placeholder_option(text: str, value: str = "__none__") -> list[dict]:
     return [{"text": {"type": "plain_text", "text": text}, "value": value}]
 
 
-# def find_available_start_slots(booked_slots: set[str]) -> list[str]:
-#     starts = []
-#     for i, start in enumerate(TIME_SLOTS[:-1]):
-#         if start in booked_slots:
-#             continue
-
-#         has_end = False
-#         for j in range(i + 1, len(TIME_SLOTS)):
-#             covered = TIME_SLOTS[i:j]
-#             if any(s in booked_slots for s in covered):
-#                 break
-#             has_end = True
-
-#         if has_end:
-#             starts.append(start)
-
-#     return starts
 def find_available_start_slots(booked_slots: set[str]) -> list[str]:
     return [slot for slot in TIME_SLOTS[:-1] if slot not in booked_slots]
 
@@ -538,6 +498,20 @@ def parse_current_context_from_body(body):
 def state_checkbox_checked(state_values, block_id: str, action_id: str, value: str) -> bool:
     selected_options = state_values.get(block_id, {}).get(action_id, {}).get("selected_options", [])
     return any(option.get("value") == value for option in selected_options)
+
+
+# def checkbox_checked_from_body(body, block_id: str, action_id: str, value: str) -> bool:
+#     actions = body.get("actions", [])
+#     if actions and actions[0].get("action_id") == action_id:
+#         selected_options = actions[0].get("selected_options", [])
+#         return any(option.get("value") == value for option in selected_options)
+
+#     state_values = body.get("view", {}).get("state", {}).get("values", {})
+#     if state_checkbox_checked(state_values, block_id, action_id, value):
+#         return True
+
+#     metadata = json.loads(body.get("view", {}).get("private_metadata") or "{}")
+#     return bool(metadata.get("reminder_enabled", False))
 
 
 def build_step1_modal(company_id: str | None = None, floor_id: str | None = None):
@@ -621,7 +595,7 @@ def build_step2_modal(
     end_time: str | None = None,
     error_text: str | None = None,
     using_reason: str | None = None,
-    reminder_enabled: bool = False,
+    # reminder_enabled: bool = False,
 ):
     floor_options = COMPANIES_FLOOR.get(company_id, [])
     floor_option = find_option(floor_options, floor_id) if floor_id else None
@@ -681,21 +655,21 @@ def build_step2_modal(
     if room_option:
         room_element["initial_option"] = room_option
 
-    reminder_option = {
-        "text": {
-            "type": "mrkdwn",
-            "text": "*리마인더 여부*",
-        },
-        "value": "enabled",
-    }
+    # reminder_option = {
+    #     "text": {
+    #         "type": "plain_text",
+    #         "text": "리마인더 여부",
+    #     },
+    #     "value": "enabled",
+    # }
 
-    reminder_element = {
-        "type": "checkboxes",
-        "action_id": "reminder_action",
-        "options": [reminder_option],
-    }
-    if reminder_enabled:
-        reminder_element["initial_options"] = [reminder_option]
+    # reminder_element = {
+    #     "type": "checkboxes",
+    #     "action_id": "reminder_action",
+    #     "options": [reminder_option],
+    # }
+    # if reminder_enabled:
+    #     reminder_element["initial_options"] = [reminder_option]
 
     blocks = [
         {
@@ -756,13 +730,6 @@ def build_step2_modal(
             "label": {"type": "plain_text", "text": "종료 시간"},
             "element": end_element,
         },
-        {
-            "type": "input",
-            "block_id": "reminder_block",
-            "label": {"type": "plain_text", "text": "리마인더"},
-            "optional": True,
-            "element": reminder_element,
-        },
     ]
 
     if error_text:
@@ -783,6 +750,7 @@ def build_step2_modal(
             "booking_date": booking_date,
             "start_time": start_time,
             "end_time": end_time,
+            # "reminder_enabled": reminder_enabled,
         }),
         "title": {"type": "plain_text", "text": "회의실 예약"},
         "submit": {"type": "plain_text", "text": "예약"},
@@ -1114,17 +1082,17 @@ def handle_step1(ack, body, view):
 @app.action("floor_action")
 @app.action("room_action")
 @app.action("date_action")
+# @app.action("reminder_action")
 @app.action("start_time_action")
 @app.action("end_time_action")
 @app.action("attendee_action")
-@app.action("reminder_action")
+
 def handle_modal_actions(ack, body, client):
     ack()
 
     company_id, room_id, floor_id, booking_date, start_time, end_time = parse_current_context_from_body(body)
     callback_id = body["view"]["callback_id"]
-    state_values = body["view"].get("state", {}).get("values", {})
-    reminder_enabled = state_checkbox_checked(state_values, "reminder_block", "reminder_action", "enabled")
+    # reminder_enabled = checkbox_checked_from_body(body, "reminder_block", "reminder_action", "enabled")
 
     if callback_id == "reservation_step1":
         client.views_update(
@@ -1148,7 +1116,7 @@ def handle_modal_actions(ack, body, client):
                 booking_date=booking_date,
                 start_time=start_time,
                 end_time=end_time,
-                reminder_enabled=reminder_enabled,
+                # reminder_enabled=reminder_enabled,
             ),
         )
         return
@@ -1216,6 +1184,12 @@ def handle_booking_view(ack, body, logger):
     logger.info(body)
 
 
+@app.action("open_web_lookup")
+def handle_open_web_lookup(ack, body, logger):
+    ack()
+    logger.info(body)
+
+
 @app.view("reservation_step2")
 def handle_step2(ack, body, view, client):
     values = view["state"]["values"]
@@ -1241,7 +1215,7 @@ def handle_step2(ack, body, view, client):
     attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users",[])
     
     using_reason = values["using_reason_block"]["plain_text_input-action"]["value"]
-    reminder_enabled = state_checkbox_checked(values, "reminder_block", "reminder_action", "enabled")
+    # reminder_enabled = state_checkbox_checked(values, "reminder_block", "reminder_action", "enabled")
 
     attendee_infos = []
 
@@ -1310,7 +1284,7 @@ def handle_step2(ack, body, view, client):
             start_time=start_time,
             end_time=end_time,
             USING_REASON = using_reason,
-            REMINDER_ENABLED=reminder_enabled,
+            # REMINDER_ENABLED=reminder_enabled,
             attendee_ids = attendee_infos,
         )
     except ValueError:
@@ -1325,7 +1299,7 @@ def handle_step2(ack, body, view, client):
                 end_time=None,
                 error_text="해당 시간에 이미 예약된 회의실입니다. 다른 시간을 골라주세요.",
                 using_reason=using_reason,
-                reminder_enabled=reminder_enabled,
+                # reminder_enabled=reminder_enabled,
             ),
         })
         return
