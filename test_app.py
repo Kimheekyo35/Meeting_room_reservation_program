@@ -380,7 +380,7 @@ def get_booked_slots(COMPANY_ID, RESERVE_DAY, FLOOR, ROOM_ID):
             return booked
 
     finally:
-        if connection:
+        if connection:  
             connection.close()
 
 
@@ -1209,7 +1209,7 @@ def handle_step2(ack, body, view, client):
 
     floor_options = COMPANIES_FLOOR.get(company_id, [])
     floor_option = find_option(floor_options, floor_id) if floor_id else None
-    floor_name = floor_option["text"]["text"] if floor_option else "-"
+    floor_name = floor_option["text"]["text"] if floor_option else ""
 
     room_name = get_room_name(company_id, floor_id, room_id)
     attendee_ids = values["attendee_block"]["attendee_action"].get("selected_users",[])
