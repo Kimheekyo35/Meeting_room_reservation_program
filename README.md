@@ -22,6 +22,28 @@ Slack API, PostgreSQL, Docker를 활용하여 구축한 **회의실 예약 시�
 - 예약 이력 및 취소 이력 관리 가능
 
 ---
+## ⭐ 이용 방법
+1. `/회의실` 클릭 시
+
+<img width="779" height="560" alt="image" src="https://github.com/user-attachments/assets/ee8ccb06-b324-4d07-a554-88de7c714973" />
+
+`조회` 클릭 시 회의실 예약 현황을 알 수 있는 URL로 넘어감
+
+2. `예약 취소` 클릭 시
+<img width="775" height="640" alt="image" src="https://github.com/user-attachments/assets/a1777e47-69f6-4329-aa14-85a66998ae40" />
+
+해당 모달이 뜨고 `취소` 버튼을 누르면 해당 예약이 사라지고 DB에서도 사라짐
+
+3. `다음` 클릭 시
+날짜와 시작 시간,종료 시간을 정하면 됨
+- 이미 예약이 되어 있으면 시작 시간과 종료 시간에서 제외됨
+- 종료 시간은 시작 시간보다 이후의 시간대가 모달에 뜸
+
+ <img width="783" height="954" alt="image" src="https://github.com/user-attachments/assets/d900b201-cb1e-4c3a-8084-d4482d8033cf" />
+
+4. 앱 DM을 통해 예약 정보 메세지가 발송됨
+<img width="936" height="167" alt="image" src="https://github.com/user-attachments/assets/6bb58ce2-9796-43b2-b198-8c4cf72eff86" />
+---
 
 ## ✨ 주요 기능
 
